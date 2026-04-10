@@ -1,0 +1,1 @@
+{"exchange": "SHFE", "instrument_id": "ag2604", "fast_period": 5, "slow_period": 20, "order_volume": 1, "kline_style": "M1", "pay_up": 0, "class_name": "DemoDMA", "strategy_name": "测试", "_extension": ".py"}

@@ -1,0 +1,1 @@
+{"exchange": "SHFE", "instrument_id": "rb2505", "kline_style": "D1", "class_name": "ExportKLineData", "strategy_name": "数据导出", "_extension": ".py"}
