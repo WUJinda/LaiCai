@@ -1,5 +1,5 @@
 # ============================================================
-# 布林带做空策略 (Bollinger Bands Short Strategy)
+# 布林带做空策略 - ATR动态阈值版 (Bollinger Bands Short Strategy)
 # ============================================================
 
 from pythongo.base import BaseParams, BaseState, Field
@@ -24,13 +24,16 @@ class Params(BaseParams):
     bb_period: int = Field(default=20, title="布林带周期", ge=2)
     bb_std: float = Field(default=2.0, title="标准差倍数", ge=0.1)
 
+    # ATR参数
+    atr_period: int = Field(default=14, title="ATR周期", ge=2)
+    atr_multiplier: float = Field(default=0.5, title="ATR倍数(N值)", ge=0.1)
+
     # 交易参数
     order_volume: int = Field(default=10, title="下单手数", ge=1)  # 10手
     pay_up: int | float = Field(default=0, title="超价")
 
     # 策略参数
-    bandwidth_threshold: float = Field(default=0.21, title="带宽阈值")  # 25%
-    breakout_threshold: float = Field(default=0.02, title="突破阈值")   # 2%
+    bandwidth_threshold: float = Field(default=0.25, title="带宽阈值")  # 25%
 
 
 # ============================================================
@@ -43,6 +46,7 @@ class State(BaseState):
     bb_middle: float = Field(default=0, title="中轨")
     bb_lower: float = Field(default=0, title="下轨")
     bandwidth: float = Field(default=0, title="带宽")
+    atr_value: float = Field(default=0, title="ATR")
     trend_confirmed: bool = Field(default=False, title="趋势已确认")
     monitoring: bool = Field(default=False, title="监听中")
 
@@ -50,8 +54,8 @@ class State(BaseState):
 # ============================================================
 # 策略主类
 # ============================================================
-class BollingerBandsStrategy(BaseStrategy):
-    """布林带做空策略"""
+class BollingerBandsATRStrategy(BaseStrategy):
+    """布林带做空策略 - ATR动态阈值版"""
 
     def __init__(self):
         super().__init__()
@@ -173,12 +177,17 @@ class BollingerBandsStrategy(BaseStrategy):
     # 指标计算
     # ========================================================
     def calc_indicator(self) -> None:
-        """计算布林带指标"""
+        """计算布林带指标和ATR"""
         # 获取布林带数据（返回数组）
         upper, middle, lower = self.kline_generator.producer.bbands(
             period=self.params_map.bb_period,
             std_dev=self.params_map.bb_std,
             array=True
+        )
+
+        # 获取ATR
+        self.state_map.atr_value, _ = self.kline_generator.producer.atr(
+            timeperiod=self.params_map.atr_period
         )
 
         # 保存上一根K线的值
@@ -261,11 +270,11 @@ class BollingerBandsStrategy(BaseStrategy):
         # 如果处于监听状态
         if self.state_map.monitoring:
 
-            # 检查是否突破上轨+2%
-            breakout_price = self.state_map.bb_upper * (1 + self.params_map.breakout_threshold)
+            # 突破价 = 上轨 + N × ATR
+            breakout_price = self.state_map.bb_upper + self.params_map.atr_multiplier * self.state_map.atr_value
 
             if kline.close > breakout_price:
-                # 价格突破上轨+2%，卖出开仓（做空）
+                # 价格突破上轨+N×ATR，卖出开仓（做空）
                 self.signal_price = -kline.close
 
                 if self.trading:
@@ -277,7 +286,7 @@ class BollingerBandsStrategy(BaseStrategy):
                         order_direction="sell"
                     )
                     self.order_id.add(order_id)
-                    self.output(f"开空仓: 突破上轨+2%, 开仓价={kline.close}, 上轨={self.state_map.bb_upper}")
+                    self.output(f"开空仓: 突破上轨+N×ATR, 开仓价={kline.close}, 上轨={self.state_map.bb_upper}, ATR={self.state_map.atr_value}")
 
                 # 开仓后重置监听状态
                 self.state_map.monitoring = False
