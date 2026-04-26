@@ -71,39 +71,32 @@ def run_single_backtest(df, params):
     trades = []
     open_trade = None
     monitoring = False
-    continuous_count = 0
+    trend_slope_window = 3
 
     close_vals = df["close"].values
-    open_vals = df["open"].values
 
     for i in range(bb_period, len(df)):
         bb_upper = upper[i]
         bb_middle = middle[i]
-        bb_lower = lower[i]
         bw = bandwidth[i]
 
         if np.isnan(bb_upper) or np.isnan(bb_middle):
             continue
 
-        pre_bb_upper = upper[i - 1]
-        pre_bb_lower = lower[i - 1]
+        # 斜率趋势确认
+        if i >= bb_period + trend_slope_window - 1:
+            upper_slope = (upper[i] - upper[i - trend_slope_window]) / (trend_slope_window - 1)
+            lower_slope = (lower[i] - lower[i - trend_slope_window]) / (trend_slope_window - 1)
+            trend_confirmed = upper_slope > 0 and lower_slope > 0
+        else:
+            trend_confirmed = False
 
         # 前置条件
-        upper_rising = bb_upper > pre_bb_upper
-        lower_rising = bb_lower > pre_bb_lower
         bandwidth_ok = bw > params["bandwidth_threshold"]
-        preconditions_met = upper_rising and lower_rising and bandwidth_ok
+        preconditions_met = trend_confirmed and bandwidth_ok
 
         # 信号计算
-        if preconditions_met:
-            monitoring = True
-            if close_vals[i] > open_vals[i]:
-                continuous_count += 1
-            else:
-                continuous_count = 0
-        else:
-            monitoring = False
-            continuous_count = 0
+        monitoring = preconditions_met
 
         # 平仓
         if open_trade is not None and close_vals[i] <= bb_middle:
@@ -112,12 +105,11 @@ def run_single_backtest(df, params):
             open_trade = None
 
         # 开仓
-        if open_trade is None and monitoring and continuous_count >= params["continuous_klines"]:
+        if open_trade is None and monitoring:
             breakout_price = bb_upper * (1 + params["breakout_threshold"])
             if close_vals[i] > breakout_price:
                 open_trade = Trade(i, df["date"].iloc[i], close_vals[i], params["order_volume"])
                 monitoring = False
-                continuous_count = 0
 
     bbands_data = {"upper": upper, "middle": middle, "lower": lower, "bandwidth": bandwidth}
     return trades, bbands_data
@@ -145,6 +137,16 @@ def calc_trade_pnl(trades, volume_multiple, fee_rate):
             "win": net > 0,
         })
     return results
+
+
+def run_all_with_modes(data_dir, base_params):
+    """批量运行两种模式（严谨+宽松）的回测"""
+    strict_params = {**base_params, "bandwidth_threshold": 0.25, "breakout_threshold": 0.02}
+    relaxed_params = {**base_params, "bandwidth_threshold": 0.20, "breakout_threshold": 0.01}
+    return {
+        "strict": run_all(data_dir, strict_params),
+        "relaxed": run_all(data_dir, relaxed_params),
+    }
 
 
 def run_all(data_dir, params):

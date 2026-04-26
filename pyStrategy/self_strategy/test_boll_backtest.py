@@ -8,6 +8,7 @@
     python test_boll_backtest.py
     python test_boll_backtest.py --data ~/Desktop/quanda_exports/rb2601_kline.json
     python test_boll_backtest.py --bb-period 26 --bb-std 2.0 --volume 10
+    python test_boll_backtest.py --mode relaxed
 """
 
 import argparse
@@ -35,11 +36,16 @@ DEFAULT_PARAMS = {
     "order_volume": 10,
     "bandwidth_threshold": 0.25,
     "breakout_threshold": 0.02,
-    "continuous_klines": 3,
     # 品种合约信息（用于计算盈亏金额）
     "volume_multiple": 10,  # 合约乘数，沥青=10, 螺纹钢=10
     "margin_rate": 0.13,    # 保证金率
     "fee_rate": 0.0001,     # 手续费率（万分之几）
+}
+
+# 模式预设
+MODE_PRESETS = {
+    "strict": {"bandwidth_threshold": 0.25, "breakout_threshold": 0.02},
+    "relaxed": {"bandwidth_threshold": 0.20, "breakout_threshold": 0.01},
 }
 
 DEFAULT_DATA_PATH = os.path.join(
@@ -120,64 +126,56 @@ def run_backtest(df: pd.DataFrame, params: dict) -> list[Trade]:
     """
     运行回测，模拟 my_boll_strategy.py 的策略逻辑。
 
-    开空条件: 上轨涨 + 下轨涨 + 带宽>阈值 + 连续N根阳线 + 收盘价突破上轨*(1+突破阈值)
+    开空条件: 上下轨斜率同时>0 + 带宽>阈值 + 收盘价突破上轨*(1+突破阈值)
     平空条件: 持仓中价格回落到中轨以下
     """
     trades: list[Trade] = []
     open_trade: Trade | None = None
 
-    # 状态变量（与原策略 State 对应）
     monitoring = False
-    continuous_count = 0
-
+    trend_slope_window = 3
     bb_period = params["bb_period"]
 
+    bb_upper = df["bb_upper"].values
+    bb_middle = df["bb_middle"].values
+    bb_lower = df["bb_lower"].values
+    close_vals = df["close"].values
+
     for i in range(bb_period, len(df)):
-        row = df.iloc[i]
-        prev = df.iloc[i - 1]
+        bw = df.iloc[i]["bandwidth"]
 
-        bb_upper = row["bb_upper"]
-        bb_middle = row["bb_middle"]
-        bb_lower = row["bb_lower"]
-        bandwidth = row["bandwidth"]
+        if np.isnan(bb_upper[i]) or np.isnan(bb_middle[i]):
+            continue
 
-        pre_bb_upper = prev["bb_upper"]
-        pre_bb_lower = prev["bb_lower"]
-
-        # ---- 前置条件检查 (check_preconditions) ----
-        upper_rising = bb_upper > pre_bb_upper
-        lower_rising = bb_lower > pre_bb_lower
-        bandwidth_ok = bandwidth > params["bandwidth_threshold"]
-
-        preconditions_met = upper_rising and lower_rising and bandwidth_ok
-
-        # ---- 信号计算 (calc_signal) ----
-        if preconditions_met:
-            monitoring = True
-            if row["close"] > row["open"]:
-                continuous_count += 1
-            else:
-                continuous_count = 0
+        # 斜率趋势确认
+        if i >= bb_period + trend_slope_window - 1:
+            upper_slope = (bb_upper[i] - bb_upper[i - trend_slope_window]) / (trend_slope_window - 1)
+            lower_slope = (bb_lower[i] - bb_lower[i - trend_slope_window]) / (trend_slope_window - 1)
+            trend_confirmed = upper_slope > 0 and lower_slope > 0
         else:
-            monitoring = False
-            continuous_count = 0
+            trend_confirmed = False
+
+        # 前置条件
+        bandwidth_ok = bw > params["bandwidth_threshold"]
+        preconditions_met = trend_confirmed and bandwidth_ok
+
+        # 信号计算
+        monitoring = preconditions_met
 
         # ---- 执行交易 (exec_signal) ----
 
         # 平仓逻辑: 持有空仓且价格回到中轨以下
-        if open_trade is not None and row["close"] <= bb_middle:
-            open_trade.close(row["date"], row["close"])
+        if open_trade is not None and close_vals[i] <= bb_middle[i]:
+            open_trade.close(df.iloc[i]["date"], close_vals[i])
             trades.append(open_trade)
             open_trade = None
 
-        # 开仓逻辑: 满足监听条件 + 连续阳线达标 + 突破上轨
-        if open_trade is None and monitoring and continuous_count >= params["continuous_klines"]:
-            breakout_price = bb_upper * (1 + params["breakout_threshold"])
-            if row["close"] > breakout_price:
-                open_trade = Trade(row["date"], row["close"], params["order_volume"])
-                # 开仓后重置监听状态
+        # 开仓逻辑: 满足前置条件 + 突破上轨
+        if open_trade is None and monitoring:
+            breakout_price = bb_upper[i] * (1 + params["breakout_threshold"])
+            if close_vals[i] > breakout_price:
+                open_trade = Trade(df.iloc[i]["date"], close_vals[i], params["order_volume"])
                 monitoring = False
-                continuous_count = 0
 
     return trades
 
@@ -227,7 +225,7 @@ def print_report(trades_df: pd.DataFrame, params: dict):
     print(f"\n策略参数:")
     print(f"  布林带周期: {params['bb_period']}, 标准差倍数: {params['bb_std']}")
     print(f"  带宽阈值: {params['bandwidth_threshold']}, 突破阈值: {params['breakout_threshold']}")
-    print(f"  连续K线数: {params['continuous_klines']}, 每次开仓手数: {params['order_volume']}")
+    print(f"  每次开仓手数: {params['order_volume']}")
     print(f"  合约乘数: {params['volume_multiple']}, 手续费率: {params['fee_rate']}")
 
     if trades_df.empty:
@@ -358,9 +356,10 @@ def parse_args():
     parser.add_argument("--bb-period", type=int, default=DEFAULT_PARAMS["bb_period"], help="布林带周期")
     parser.add_argument("--bb-std", type=float, default=DEFAULT_PARAMS["bb_std"], help="标准差倍数")
     parser.add_argument("--volume", type=int, default=DEFAULT_PARAMS["order_volume"], help="下单手数")
-    parser.add_argument("--bandwidth", type=float, default=DEFAULT_PARAMS["bandwidth_threshold"], help="带宽阈值")
-    parser.add_argument("--breakout", type=float, default=DEFAULT_PARAMS["breakout_threshold"], help="突破阈值")
-    parser.add_argument("--continuous", type=int, default=DEFAULT_PARAMS["continuous_klines"], help="连续K线数")
+    parser.add_argument("--bandwidth", type=float, default=None, help="带宽阈值（覆盖模式预设）")
+    parser.add_argument("--breakout", type=float, default=None, help="突破阈值（覆盖模式预设）")
+    parser.add_argument("--mode", type=str, choices=["strict", "relaxed"], default="strict",
+                        help="参数模式: strict(25%%/2%%) 或 relaxed(20%%/1%%)，默认 strict")
     parser.add_argument("--multiplier", type=int, default=DEFAULT_PARAMS["volume_multiple"], help="合约乘数")
     return parser.parse_args()
 
@@ -371,17 +370,21 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # 合并参数
+    # 应用模式预设
+    mode_preset = MODE_PRESETS[args.mode]
+
+    # 合并参数（命令行 --bandwidth/--breakout 可覆盖模式预设）
     params = {
         **DEFAULT_PARAMS,
         "bb_period": args.bb_period,
         "bb_std": args.bb_std,
         "order_volume": args.volume,
-        "bandwidth_threshold": args.bandwidth,
-        "breakout_threshold": args.breakout,
-        "continuous_klines": args.continuous,
+        "bandwidth_threshold": args.bandwidth if args.bandwidth is not None else mode_preset["bandwidth_threshold"],
+        "breakout_threshold": args.breakout if args.breakout is not None else mode_preset["breakout_threshold"],
         "volume_multiple": args.multiplier,
     }
+
+    print(f"参数模式: {args.mode}")
 
     # 加载数据
     if not os.path.exists(args.data):

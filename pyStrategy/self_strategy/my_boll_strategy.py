@@ -31,7 +31,6 @@ class Params(BaseParams):
     # 策略参数
     bandwidth_threshold: float = Field(default=0.25, title="带宽阈值")  # 25%
     breakout_threshold: float = Field(default=0.02, title="突破阈值")   # 2%
-    continuous_klines: int = Field(default=3, title="持续K线数")        # 3根
 
 
 # ============================================================
@@ -44,8 +43,8 @@ class State(BaseState):
     bb_middle: float = Field(default=0, title="中轨")
     bb_lower: float = Field(default=0, title="下轨")
     bandwidth: float = Field(default=0, title="带宽")
+    trend_confirmed: bool = Field(default=False, title="趋势已确认")
     monitoring: bool = Field(default=False, title="监听中")
-    continuous_count: int = Field(default=0, title="持续K线数")
 
 
 # ============================================================
@@ -77,6 +76,9 @@ class BollingerBandsStrategy(BaseStrategy):
 
         self.pre_bb_lower = 0
         """上一根K线下轨"""
+
+        self.trend_slope_window: int = 3
+        """趋势斜率计算窗口（K线根数）"""
 
     # ========================================================
     # 主图指标 - 显示在K线图上
@@ -195,6 +197,15 @@ class BollingerBandsStrategy(BaseStrategy):
                 / self.state_map.bb_middle
             )
 
+        # 判断趋势：上下轨在最近N根K线内是否同时向上（斜率>0）
+        n = self.trend_slope_window
+        if len(upper) >= n:
+            upper_slope = (upper[-1] - upper[-n]) / (n - 1)
+            lower_slope = (lower[-1] - lower[-n]) / (n - 1)
+            self.state_map.trend_confirmed = upper_slope > 0 and lower_slope > 0
+        else:
+            self.state_map.trend_confirmed = False
+
     # ========================================================
     # 信号计算
     # ========================================================
@@ -205,30 +216,18 @@ class BollingerBandsStrategy(BaseStrategy):
         if self.check_preconditions():
             # 满足前置条件，开始监听
             self.state_map.monitoring = True
-
-            # 检查是否上涨（收盘价 > 开盘价）
-            if kline.close > kline.open:
-                self.state_map.continuous_count += 1
-            else:
-                # 上涨中断，重置计数
-                self.state_map.continuous_count = 0
         else:
             # 不满足前置条件，停止监听
             self.state_map.monitoring = False
-            self.state_map.continuous_count = 0
 
     def check_preconditions(self) -> bool:
-        """检查前置条件"""
-        # 条件1: 上轨上涨
-        upper_rising = self.state_map.bb_upper > self.pre_bb_upper
+        """检查前置条件（首要门槛）"""
+        # 条件1: 上下轨在最近3根K线内同时向上（斜率>0）
+        if not self.state_map.trend_confirmed:
+            return False
 
-        # 条件2: 下轨上涨
-        lower_rising = self.state_map.bb_lower > self.pre_bb_lower
-
-        # 条件3: 带宽超过25%
-        bandwidth_ok = self.state_map.bandwidth > self.params_map.bandwidth_threshold
-
-        return upper_rising and lower_rising and bandwidth_ok
+        # 条件2: 带宽超过阈值
+        return self.state_map.bandwidth > self.params_map.bandwidth_threshold
 
     # ========================================================
     # 交易执行
@@ -259,9 +258,8 @@ class BollingerBandsStrategy(BaseStrategy):
                     self.output(f"平空仓: 价格回到中轨, 平仓价={kline.close}")
 
         # ========== 开仓逻辑 ==========
-        # 如果满足监听条件且持续上涨K线数达标
-        if (self.state_map.monitoring and
-            self.state_map.continuous_count >= self.params_map.continuous_klines):
+        # 如果处于监听状态
+        if self.state_map.monitoring:
 
             # 检查是否突破上轨+2%
             breakout_price = self.state_map.bb_upper * (1 + self.params_map.breakout_threshold)
@@ -283,4 +281,3 @@ class BollingerBandsStrategy(BaseStrategy):
 
                 # 开仓后重置监听状态
                 self.state_map.monitoring = False
-                self.state_map.continuous_count = 0
