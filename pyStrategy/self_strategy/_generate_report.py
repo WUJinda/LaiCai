@@ -11,9 +11,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from _batch_backtest import run_all
 
-DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "quanda_exports")
+DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "quanda_exports_h2")
 OUTPUT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "docs", "res"))
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, "backtest_report.md")
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "backtest_report_h2.md")
 
 PARAMS = {
     "bb_period": 20,
