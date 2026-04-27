@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/Administrator/Desktop/**)"
+      "Read(//c/Users/Administrator/Desktop/**)",
+      "WebSearch",
+      "Bash(git mv *)"
     ]
   }
 }
