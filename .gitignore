@@ -386,3 +386,6 @@ docs
 pyStrategy/self_strategy/backtest/__pycache__/_batch_backtest_atr.cpython-313.pyc
 pyStrategy/self_strategy/backtest/__pycache__/_batch_backtest.cpython-313.pyc
 pyStrategy/__pycache__/__init__.cpython-313.pyc
+Log/MDApi20260428.log
+Log/TradeApi20260428.log
+pyStrategy/self_strategy/__pycache__

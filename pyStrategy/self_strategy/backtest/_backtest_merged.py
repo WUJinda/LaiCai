@@ -14,41 +14,18 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(__file__))
 from _batch_backtest import run_all_with_modes
 
-DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "quanda_exports_h2")
+DESKTOP = os.path.join(os.path.expanduser("~"), "Desktop")
+DATA_DIRS = {
+    "H2": os.path.join(DESKTOP, "quanda_exports_h2"),
+    "H4": os.path.join(DESKTOP, "quanda_exports_h4"),
+    "D1": os.path.join(DESKTOP, "quanda_exports_d1"),
+}
 OUTPUT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "docs", "res"))
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "backtest_report_merged.md")
 
 plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
 
-
-# ============================================================
-# 数据重采样
-# ============================================================
-def resample_h2_to_h4(records):
-    h4 = []
-    for i in range(0, len(records) - 1, 2):
-        r1, r2 = records[i], records[i + 1]
-        h4.append({
-            "date": r2["date"], "open": r1["open"],
-            "high": max(r1["high"], r2["high"]),
-            "low": min(r1["low"], r2["low"]),
-            "close": r2["close"],
-            "volume": r1.get("volume", 0) + r2.get("volume", 0),
-        })
-    return h4
-
-
-def resample_h2_to_d1(records):
-    df = pd.DataFrame(records)
-    df["date"] = pd.to_datetime(df["date"])
-    df["day"] = df["date"].dt.date
-    daily = df.groupby("day").agg(
-        date=("date", "last"), open=("open", "first"),
-        high=("high", "max"), low=("low", "min"),
-        close=("close", "last"), volume=("volume", "sum"),
-    ).reset_index(drop=True)
-    return daily.to_dict("records")
 
 
 # ============================================================
@@ -153,41 +130,21 @@ def plot_trade_process(records, trades, instrument, period_label, mode_label, ou
 # ============================================================
 # 跑单周期
 # ============================================================
-def run_period(period_name, resample_fn, params):
-    """跑一个周期的回测，返回 results 和原始数据"""
-    tmp_dir = os.path.join(DATA_DIR, f"{period_name}_tmp")
-    os.makedirs(tmp_dir, exist_ok=True)
-
+def run_period(period_name, params):
+    """跑一个周期的回测，直接从对应目录读取数据"""
+    data_dir = DATA_DIRS[period_name]
     file_records = {}  # fname -> records (for charting)
 
-    try:
-        for fname in sorted(os.listdir(DATA_DIR)):
-            if not fname.endswith("_kline.json"):
-                continue
-            with open(os.path.join(DATA_DIR, fname), "r", encoding="utf-8") as f:
-                raw = json.load(f)
-            records = raw.get("data", [])
-            if len(records) < 25:
-                continue
+    for fname in sorted(os.listdir(data_dir)):
+        if not fname.endswith("_kline.json"):
+            continue
+        with open(os.path.join(data_dir, fname), "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        records = raw.get("data", [])
+        if len(records) >= 25:
+            file_records[fname] = records
 
-            if resample_fn:
-                resampled = resample_fn(records)
-            else:
-                resampled = records
-
-            file_records[fname] = resampled
-
-            raw["data"] = resampled
-            raw["kline_style"] = period_name
-            with open(os.path.join(tmp_dir, fname), "w", encoding="utf-8") as f:
-                json.dump(raw, f, ensure_ascii=False, default=str)
-
-        results = run_all_with_modes(tmp_dir, params)
-    finally:
-        for f in os.listdir(tmp_dir):
-            os.remove(os.path.join(tmp_dir, f))
-        os.rmdir(tmp_dir)
-
+    results = run_all_with_modes(data_dir, params)
     return results, file_records
 
 
@@ -200,7 +157,7 @@ def build_report(all_period_results):
     lines.append("# 布林带做空策略 - 多周期回测融合报告")
     lines.append("")
     lines.append(f"> 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"> 数据来源: H2 原始数据，H4（每2根合并），D1（按日聚合）")
+    lines.append(f"> 数据来源: H2 / H4 / D1 各周期独立导出数据")
     lines.append("")
 
     # 策略参数
@@ -369,10 +326,49 @@ def build_report(all_period_results):
         lines.append(f"- 宽松模式总收益率: {total_pnl_relaxed/total_margin_relaxed*100:+,.2f}%")
     lines.append("")
     lines.append("### 关键发现")
-    lines.append("1. **条件组合非常严格**：趋势斜率 + 带宽阈值 + 突破阈值的组合导致信号极少")
-    lines.append("2. **不同周期捕捉不同行情**：H2 捕捉 FG（玻璃）短期波动，D1 捕捉 ag（白银）大趋势")
-    lines.append("3. **ag2606 白银表现突出**：日线周期下产生 1 笔大额盈利（+31.3 万），说明策略在强趋势品种上有效")
-    lines.append("4. **H4 周期信号最少**：数据量减半 + 斜率窗口覆盖时间更长，条件更难满足")
+    # 动态生成结论
+    finding_idx = 1
+    lines.append(f"{finding_idx}. **条件组合非常严格**：趋势斜率 + 带宽阈值 + 突破阈值的组合导致信号极少")
+    finding_idx += 1
+
+    # 按周期统计信号
+    period_counts = {}
+    for pname, pdata in all_period_results.items():
+        total = sum(r["trade_count"] for r in pdata.get("relaxed", []))
+        period_counts[pname] = total
+    best_period = max(period_counts, key=period_counts.get) if period_counts else None
+    if best_period:
+        lines.append(f"{finding_idx}. **{period_labels[best_period]}（{best_period}）信号最多**：宽松模式下 {period_counts[best_period]} 笔交易")
+        finding_idx += 1
+
+    # 找最盈利品种
+    best_pnl_inst = None
+    best_pnl_val = -float('inf')
+    worst_pnl_inst = None
+    worst_pnl_val = float('inf')
+    for pname, pdata in all_period_results.items():
+        for mkey, mresults in pdata.items():
+            for r in mresults:
+                if r["trade_count"] > 0 and r.get("total_pnl"):
+                    if r["total_pnl"] > best_pnl_val:
+                        best_pnl_val = r["total_pnl"]
+                        best_pnl_inst = f"{r['instrument']} {period_labels[pname]} {mode_labels[mkey]}"
+                    if r["total_pnl"] < worst_pnl_val:
+                        worst_pnl_val = r["total_pnl"]
+                        worst_pnl_inst = f"{r['instrument']} {period_labels[pname]} {mode_labels[mkey]}"
+    if best_pnl_inst:
+        lines.append(f"{finding_idx}. **最盈利**: {best_pnl_inst}，盈亏 {best_pnl_val:>+,.0f} 元")
+        finding_idx += 1
+    if worst_pnl_inst:
+        lines.append(f"{finding_idx}. **最大亏损**: {worst_pnl_inst}，盈亏 {worst_pnl_val:>+,.0f} 元")
+        finding_idx += 1
+
+    # 整体胜率
+    all_wins = sum(r.get("win_count", 0) for d in all_period_results.values() for r in d.get("relaxed", []))
+    all_total = sum(r["trade_count"] for d in all_period_results.values() for r in d.get("relaxed", []))
+    if all_total > 0:
+        lines.append(f"{finding_idx}. **宽松模式整体胜率**: {all_wins}/{all_total} = {all_wins/all_total*100:.1f}%")
+        finding_idx += 1
     lines.append("")
 
     return "\n".join(lines), trade_entries
@@ -397,15 +393,11 @@ def main():
     all_period_results = {}
     all_file_records = {}
 
-    periods = [
-        ("H2", None),
-        ("H4", resample_h2_to_h4),
-        ("D1", resample_h2_to_d1),
-    ]
+    periods = ["H2", "H4", "D1"]
 
-    for period_name, resample_fn in periods:
+    for period_name in periods:
         print(f"\n正在回测 {period_name} ...")
-        results, file_records = run_period(period_name, resample_fn, base_params)
+        results, file_records = run_period(period_name, base_params)
         all_period_results[period_name] = results
         all_file_records[period_name] = file_records
         strict_count = sum(r["trade_count"] for r in results.get("strict", []))

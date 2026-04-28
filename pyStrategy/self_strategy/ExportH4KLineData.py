@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 r"""
-InfiniTrader 2小时K线批量导出策略
+InfiniTrader 4小时K线批量导出策略
 
-功能：导出与日线回测相同的 31 个品种的 H2（2小时）K线数据
+功能：导出与日线回测相同的 31 个品种的 H4（4小时）K线数据
 用途：供布林带做空策略进行正确周期的回测
 
 使用方法：
 1. 在 InfiniTrader 中加载此策略
 2. 运行策略，将自动导出所有配置的合约
-3. 数据保存到桌面 quanda_exports_h2/ 目录
+3. 数据保存到桌面 quanda_exports_h4/ 目录
 """
 
 import json
@@ -19,54 +19,54 @@ from pythongo.ui import BaseStrategy
 from pythongo.core import MarketCenter
 
 
-class ExportH2KLineData(BaseStrategy):
-    """2小时K线批量导出策略"""
+class ExportH4KLineData(BaseStrategy):
+    """4小时K线批量导出策略"""
 
     def __init__(self) -> None:
         super().__init__()
 
-        # 配置要导出的合约列表（与日线回测相同的 31 个品种）
+        # 配置要导出的合约列表（当前活跃主力合约，2026-04-28 更新）
         self.contracts = [
             # 股指期货 - 中金所 (CFFEX)
-            ("CFFEX", "IC2603", "中证500股指期货"),
-            ("CFFEX", "IF2603", "沪深300股指期货"),
-            ("CFFEX", "IH2603", "上证50股指期货"),
-            ("CFFEX", "IM2603", "中证1000股指期货"),
+            ("CFFEX", "IC2606", "中证500股指期货"),
+            ("CFFEX", "IF2606", "沪深300股指期货"),
+            ("CFFEX", "IH2606", "上证50股指期货"),
+            ("CFFEX", "IM2606", "中证1000股指期货"),
 
             # 国债期货 - 中金所 (CFFEX)
-            ("CFFEX", "T2506", "10年期国债期货"),
-            ("CFFEX", "TF2506", "5年期国债期货"),
-            ("CFFEX", "TS2506", "2年期国债期货"),
+            ("CFFEX", "T2609", "10年期国债期货"),
+            ("CFFEX", "TF2609", "5年期国债期货"),
+            ("CFFEX", "TS2609", "2年期国债期货"),
 
             # 商品期货 - 上期所 (SHFE)
-            ("SHFE", "rb2601", "螺纹钢"),
-            ("SHFE", "hc2506", "热卷"),
-            ("SHFE", "cu2506", "铜"),
-            ("SHFE", "al2506", "铝"),
-            ("SHFE", "zn2506", "锌"),
-            ("SHFE", "ni2506", "镍"),
-            ("SHFE", "au2506", "黄金"),
+            ("SHFE", "rb2610", "螺纹钢"),
+            ("SHFE", "hc2610", "热卷"),
+            ("SHFE", "cu2606", "铜"),
+            ("SHFE", "al2606", "铝"),
+            ("SHFE", "zn2606", "锌"),
+            ("SHFE", "ni2606", "镍"),
+            ("SHFE", "au2608", "黄金"),
             ("SHFE", "ag2606", "白银"),
-            ("SHFE", "bu2506", "沥青"),
-            ("SHFE", "ru2506", "橡胶"),
+            ("SHFE", "bu2606", "沥青"),
+            ("SHFE", "ru2609", "橡胶"),
 
             # 商品期货 - 大商所 (DCE)
-            ("DCE", "i2505", "铁矿石"),
-            ("DCE", "m2505", "豆粕"),
-            ("DCE", "y2505", "豆油"),
-            ("DCE", "p2505", "棕榈油"),
-            ("DCE", "a2505", "豆一"),
-            ("DCE", "c2505", "玉米"),
-            ("DCE", "cs2505", "玉米淀粉"),
+            ("DCE", "i2609", "铁矿石"),
+            ("DCE", "m2609", "豆粕"),
+            ("DCE", "y2609", "豆油"),
+            ("DCE", "p2609", "棕榈油"),
+            ("DCE", "a2609", "豆一"),
+            ("DCE", "c2609", "玉米"),
+            ("DCE", "cs2609", "玉米淀粉"),
 
             # 商品期货 - 郑商所 (CZCE)
-            ("CZCE", "SR2505", "白糖"),
-            ("CZCE", "CF2505", "棉花"),
-            ("CZCE", "RM2505", "菜粕"),
-            ("CZCE", "MA2505", "甲醇"),
-            ("CZCE", "TA2505", "PTA"),
-            ("CZCE", "FG2505", "玻璃"),
-            ("CZCE", "SA2505", "纯碱"),
+            ("CZCE", "SR2609", "白糖"),
+            ("CZCE", "CF2609", "棉花"),
+            ("CZCE", "RM2609", "菜粕"),
+            ("CZCE", "MA2609", "甲醇"),
+            ("CZCE", "TA2609", "PTA"),
+            ("CZCE", "FG2609", "玻璃"),
+            ("CZCE", "SA2609", "纯碱"),
         ]
 
         self.export_dir = ""
@@ -79,13 +79,12 @@ class ExportH2KLineData(BaseStrategy):
         from pythongo.infini import write_log
 
         write_log("=" * 60)
-        write_log("2小时K线批量导出策略")
+        write_log("4小时K线批量导出策略")
         write_log("=" * 60)
         write_log(f"共配置 {len(self.contracts)} 个合约")
 
-        # 导出到单独的 H2 目录，不覆盖日线数据
         desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-        self.export_dir = os.path.join(desktop, "quanda_exports_h2")
+        self.export_dir = os.path.join(desktop, "quanda_exports_h4")
         os.makedirs(self.export_dir, exist_ok=True)
 
         write_log(f"导出目录: {self.export_dir}")
@@ -94,20 +93,19 @@ class ExportH2KLineData(BaseStrategy):
         """策略启动"""
         from pythongo.infini import write_log
 
-        write_log("开始批量导出 H2 K线数据...")
+        write_log("开始批量导出 H4 K线数据...")
 
         market_center = MarketCenter()
         self.export_total = 0
 
         for exchange, instrument, name in self.contracts:
-            write_log(f"\n正在导出: {instrument} ({name}) - H2")
+            write_log(f"\n正在导出: {instrument} ({name}) - H4")
 
             try:
-                # 获取 H2（2小时）K线数据
                 kline_data = market_center.get_kline_data(
                     exchange=exchange,
                     instrument_id=instrument,
-                    style="H2",
+                    style="H4",
                     count=-10000
                 )
 
@@ -118,7 +116,6 @@ class ExportH2KLineData(BaseStrategy):
 
                 write_log(f"  获取到 {len(kline_data)} 条数据")
 
-                # 转换数据格式
                 export_data = []
                 for bar in kline_data:
                     export_data.append({
@@ -132,7 +129,6 @@ class ExportH2KLineData(BaseStrategy):
                         "open_interest": int(bar.get('open_interest', 0)) if bar.get('open_interest') else 0,
                     })
 
-                # 保存到文件
                 file_name = f"{instrument}_kline.json"
                 file_path = os.path.join(self.export_dir, file_name)
 
@@ -141,7 +137,7 @@ class ExportH2KLineData(BaseStrategy):
                     "exchange": exchange,
                     "instrument": instrument,
                     "name": name,
-                    "kline_style": "H2",
+                    "kline_style": "H4",
                     "total_records": len(export_data),
                     "data": export_data
                 }
@@ -154,7 +150,6 @@ class ExportH2KLineData(BaseStrategy):
 
                 write_log(f"  已保存: {file_name} ({len(export_data)} 条)")
 
-                # 显示数据范围
                 if export_data:
                     write_log(f"  范围: {export_data[0]['date']} ~ {export_data[-1]['date']}")
 
@@ -169,7 +164,7 @@ class ExportH2KLineData(BaseStrategy):
         from pythongo.infini import write_log
 
         write_log("\n" + "=" * 60)
-        write_log("H2 K线批量导出完成！")
+        write_log("H4 K线批量导出完成！")
         write_log(f"成功导出: {self.export_count}/{len(self.contracts)} 个合约")
         write_log(f"总记录数: {self.export_total}")
         write_log(f"导出目录: {self.export_dir}")
