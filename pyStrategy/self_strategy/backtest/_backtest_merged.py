@@ -167,7 +167,7 @@ def build_report(all_period_results):
     lines.append("|------|---------|---------|------|")
     lines.append("| 布林带周期 | 20 | 20 | SMA 周期 |")
     lines.append("| 标准差倍数 | 2.0 | 2.0 | BB 上下轨偏移 |")
-    lines.append("| 带宽阈值 | 0.25 (25%) | 0.20 (20%) | |")
+    lines.append("| 带宽阈值 | 0.21 (21%) | 0.15 (15%) | |")
     lines.append("| 突破阈值 | 0.02 (+2%) | 0.01 (+1%) | |")
     lines.append("| 趋势斜率窗口 | 3 | 3 | 最近3根K线斜率>0 |")
     lines.append("| 每次开仓手数 | 动态计算 | 动态计算 | 总保证金1000万, 单笔保证金≤100万, 同时持仓保证金≤600万(60%) |")
@@ -184,7 +184,7 @@ def build_report(all_period_results):
 
     # 各周期分模式汇总
     period_labels = {"H2": "2小时", "H4": "4小时", "D1": "日线"}
-    mode_labels = {"strict": "严谨（25%/+2%）", "relaxed": "宽松（20%/+1%）"}
+    mode_labels = {"strict": "严谨（21%/+2%）", "relaxed": "宽松（15%/+1%）"}
 
     # 收集所有品种（用于遍历）
     all_instruments = set()

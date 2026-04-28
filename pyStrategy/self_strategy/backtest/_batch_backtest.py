@@ -188,8 +188,8 @@ def calc_trade_pnl(trades, volume_multiple, fee_rate, margin_rate):
 
 def run_all_with_modes(data_dir, base_params):
     """批量运行两种模式（严谨+宽松）的回测"""
-    strict_params = {**base_params, "bandwidth_threshold": 0.25, "breakout_threshold": 0.02}
-    relaxed_params = {**base_params, "bandwidth_threshold": 0.20, "breakout_threshold": 0.01}
+    strict_params = {**base_params, "bandwidth_threshold": 0.21, "breakout_threshold": 0.02}
+    relaxed_params = {**base_params, "bandwidth_threshold": 0.15, "breakout_threshold": 0.01}
     return {
         "strict": run_all(data_dir, strict_params),
         "relaxed": run_all(data_dir, relaxed_params),
