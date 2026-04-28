@@ -213,7 +213,7 @@ def build_report(all_period_results):
     lines.append("| 带宽阈值 | 0.25 (25%) | 0.20 (20%) | |")
     lines.append("| 突破阈值 | 0.02 (+2%) | 0.01 (+1%) | |")
     lines.append("| 趋势斜率窗口 | 3 | 3 | 最近3根K线斜率>0 |")
-    lines.append("| 每次开仓手数 | 动态计算 | 动态计算 | 总敞口1000万, 单笔上限100万, 同时持仓上限60%(600万) |")
+    lines.append("| 每次开仓手数 | 动态计算 | 动态计算 | 总保证金1000万, 单笔保证金≤100万, 同时持仓保证金≤600万(60%) |")
     lines.append("| 手续费率 | 0.0001 | 0.0001 | |")
     lines.append("")
     lines.append("### 开仓条件（做空）")
@@ -229,18 +229,29 @@ def build_report(all_period_results):
     period_labels = {"H2": "2小时", "H4": "4小时", "D1": "日线"}
     mode_labels = {"strict": "严谨（25%/+2%）", "relaxed": "宽松（20%/+1%）"}
 
+    # 收集所有品种（用于遍历）
+    all_instruments = set()
+    for period_data in all_period_results.values():
+        for mode_data in period_data.values():
+            for r in mode_data:
+                all_instruments.add(r["instrument"])
+
+    def _has_trades(inst, mode_key):
+        for period_data in all_period_results.values():
+            for r in period_data.get(mode_key, []):
+                if r["instrument"] == inst and r["trade_count"] > 0:
+                    return True
+        return False
+
     lines.append("## 二、多周期汇总")
     lines.append("")
     lines.append("### 严谨模式")
     lines.append("")
     lines.append("| 品种 | H2 | H4 | D1 |")
     lines.append("|------|----|----|----|")
-    instruments = set()
-    for period_data in all_period_results.values():
-        for mode_data in period_data.values():
-            for r in mode_data:
-                instruments.add(r["instrument"])
-    for inst in sorted(instruments):
+    for inst in sorted(all_instruments):
+        if not _has_trades(inst, "strict"):
+            continue
         cells = []
         for period_data in all_period_results.values():
             strict_results = period_data.get("strict", [])
@@ -257,7 +268,9 @@ def build_report(all_period_results):
     lines.append("")
     lines.append("| 品种 | H2 | H4 | D1 |")
     lines.append("|------|----|----|----|")
-    for inst in sorted(instruments):
+    for inst in sorted(all_instruments):
+        if not _has_trades(inst, "relaxed"):
+            continue
         cells = []
         for period_data in all_period_results.values():
             relaxed_results = period_data.get("relaxed", [])
@@ -305,12 +318,14 @@ def build_report(all_period_results):
         lines.append(section_title)
         lines.append("")
         lines.append(f"- 数据范围: {r['date_start']} ~ {r['date_end']}（{r['records']} 条记录）")
-        lines.append(f"- 合约乘数: {r['volume_multiple']}")
+        lines.append(f"- 合约乘数: {r['volume_multiple']}, 保证金率: {r.get('margin_rate', 0.10)*100:.0f}%")
         lines.append(f"- 最大带宽: {r['max_bandwidth']:.4f}")
         lines.append(f"- 交易笔数: {r['trade_count']}")
         lines.append(f"- 盈利/亏损: {r.get('win_count', 0)}/{r.get('loss_count', 0)}")
         lines.append(f"- 胜率: {r.get('win_rate', '-')}%")
         lines.append(f"- 总盈亏: {r.get('total_pnl', 0):>+,.1f} 元")
+        lines.append(f"- 总保证金: {r.get('total_margin', 0):>+,.1f} 元")
+        lines.append(f"- 平均收益率: {r.get('avg_return_rate', 0):>+,.2f}%")
         if r.get("max_drawdown"):
             lines.append(f"- 最大回撤: {r['max_drawdown']:>+,.1f} 元")
         if r.get("avg_holding_days"):
@@ -321,15 +336,15 @@ def build_report(all_period_results):
         if r["trades"]:
             lines.append("交易明细:")
             lines.append("")
-            lines.append("| # | 开仓日期 | 开仓价 | 平仓日期 | 平仓价 | 手数 | 持仓天数 | 点数盈亏 | 手续费 | 净盈亏 |")
-            lines.append("|---|---------|--------|---------|--------|------|---------|---------|--------|--------|")
+            lines.append("| # | 开仓日期 | 开仓价 | 平仓日期 | 平仓价 | 手数 | 持仓天数 | 保证金 | 点数盈亏 | 手续费 | 净盈亏 | 收益率 |")
+            lines.append("|---|---------|--------|---------|--------|------|---------|--------|---------|--------|--------|--------|")
             for j, t in enumerate(r["trades"], 1):
                 od = t["open_date"].strftime("%Y-%m-%d") if hasattr(t["open_date"], "strftime") else str(t["open_date"])
                 cd = t["close_date"].strftime("%Y-%m-%d") if hasattr(t["close_date"], "strftime") else str(t["close_date"])
                 lines.append(
                     f"| {j} | {od} | {t['open_price']:,.0f} | {cd} | {t['close_price']:,.0f} | "
-                    f"{t['volume']} | {t['holding_days']} | {t['points']:>+,.1f} | "
-                    f"{t['fee']:,.1f} | {t['net_pnl']:>+,.1f} |"
+                    f"{t['volume']} | {t['holding_days']} | {t['margin']:>+,} | {t['points']:>+,.1f} | "
+                    f"{t['fee']:,.1f} | {t['net_pnl']:>+,.1f} | {t['return_rate']:>+,.1f}% |"
                 )
             lines.append("")
 
@@ -339,13 +354,19 @@ def build_report(all_period_results):
     total_trades_strict = sum(sum(r["trade_count"] for r in d.get("strict", []) if r["trade_count"] > 0) for d in all_period_results.values())
     total_trades_relaxed = sum(sum(r["trade_count"] for r in d.get("relaxed", []) if r["trade_count"] > 0) for d in all_period_results.values())
     total_pnl_relaxed = sum(r.get("total_pnl", 0) for d in all_period_results.values() for r in d.get("relaxed", []) if r["trade_count"] > 0)
+    total_margin_relaxed = sum(r.get("total_margin", 0) for d in all_period_results.values() for r in d.get("relaxed", []) if r["trade_count"] > 0)
+    total_pnl_strict = sum(r.get("total_pnl", 0) for d in all_period_results.values() for r in d.get("strict", []) if r["trade_count"] > 0)
+    total_margin_strict = sum(r.get("total_margin", 0) for d in all_period_results.values() for r in d.get("strict", []) if r["trade_count"] > 0)
 
     lines.append(f"### 整体数据")
     lines.append(f"- 测试品种: 31 个")
     lines.append(f"- 测试周期: H2 / H4 / D1")
-    lines.append(f"- 严谨模式总交易: {total_trades_strict} 笔")
-    lines.append(f"- 宽松模式总交易: {total_trades_relaxed} 笔")
-    lines.append(f"- 宽松模式总盈亏: {total_pnl_relaxed:>+,.1f} 元")
+    lines.append(f"- 严谨模式: {total_trades_strict} 笔交易, 总盈亏 {total_pnl_strict:>+,.1f} 元, 总保证金 {total_margin_strict:>+,.1f} 元")
+    if total_margin_strict > 0:
+        lines.append(f"- 严谨模式总收益率: {total_pnl_strict/total_margin_strict*100:+,.2f}%")
+    lines.append(f"- 宽松模式: {total_trades_relaxed} 笔交易, 总盈亏 {total_pnl_relaxed:>+,.1f} 元, 总保证金 {total_margin_relaxed:>+,.1f} 元")
+    if total_margin_relaxed > 0:
+        lines.append(f"- 宽松模式总收益率: {total_pnl_relaxed/total_margin_relaxed*100:+,.2f}%")
     lines.append("")
     lines.append("### 关键发现")
     lines.append("1. **条件组合非常严格**：趋势斜率 + 带宽阈值 + 突破阈值的组合导致信号极少")

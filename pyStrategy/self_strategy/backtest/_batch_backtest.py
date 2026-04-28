@@ -30,6 +30,20 @@ MULTIPLIERS = {
     "T": 10000, "TF": 10000, "TS": 20000,
 }
 
+# 保证金率表（各品种）
+MARGIN_RATES = {
+    # 上期所 SHFE
+    "rb": 0.10, "hc": 0.10, "cu": 0.10, "al": 0.10, "zn": 0.10,
+    "ni": 0.12, "au": 0.10, "ag": 0.12, "bu": 0.10, "ru": 0.10,
+    # 大商所 DCE
+    "i": 0.12, "m": 0.10, "y": 0.10, "p": 0.10, "a": 0.10, "c": 0.10, "cs": 0.10,
+    # 郑商所 CZCE
+    "SR": 0.10, "CF": 0.10, "RM": 0.10, "MA": 0.10, "TA": 0.10, "FG": 0.10, "SA": 0.10,
+    # 中金所 CFFEX
+    "IC": 0.12, "IF": 0.12, "IH": 0.12, "IM": 0.12,
+    "T": 0.03, "TF": 0.03, "TS": 0.03,
+}
+
 
 def get_multiplier(instrument_id: str) -> int:
     """根据合约代码提取品种并返回合约乘数"""
@@ -37,6 +51,14 @@ def get_multiplier(instrument_id: str) -> int:
         if instrument_id.upper().startswith(prefix.upper()):
             return mult
     return 10  # 默认
+
+
+def get_margin_rate(instrument_id: str) -> float:
+    """根据合约代码提取品种并返回保证金率"""
+    for prefix, rate in MARGIN_RATES.items():
+        if instrument_id.upper().startswith(prefix.upper()):
+            return rate
+    return 0.10  # 默认10%
 
 
 def calc_bbands(close_array, period=20, std_dev=2.0):
@@ -71,6 +93,7 @@ def run_single_backtest(df, params):
     bb_period = params["bb_period"]
     bb_std = params["bb_std"]
     volume_multiple = params["volume_multiple"]
+    margin_rate = params["margin_rate"]
 
     upper, middle, lower, bandwidth = calc_bbands(
         df["close"].values, bb_period, bb_std
@@ -80,7 +103,7 @@ def run_single_backtest(df, params):
     open_trade = None
     monitoring = False
     trend_slope_window = 3
-    current_exposure = 0  # 当前持仓敞口
+    current_margin = 0  # 当前持仓保证金
 
     close_vals = df["close"].values
 
@@ -110,7 +133,7 @@ def run_single_backtest(df, params):
         # 平仓
         if open_trade is not None and close_vals[i] <= bb_middle:
             open_trade.close(i, df["date"].iloc[i], close_vals[i])
-            current_exposure -= open_trade.open_price * volume_multiple * open_trade.volume
+            current_margin -= open_trade.open_price * volume_multiple * margin_rate * open_trade.volume
             trades.append(open_trade)
             open_trade = None
 
@@ -119,23 +142,23 @@ def run_single_backtest(df, params):
             breakout_price = bb_upper * (1 + params["breakout_threshold"])
             if close_vals[i] > breakout_price:
                 price = close_vals[i]
-                per_lot = price * volume_multiple  # 1手敞口
-                # 单笔不超100万，总持仓不超600万
-                max_by_trade = int(MAX_PER_TRADE // per_lot) if per_lot > 0 else 0
-                remaining = MAX_TOTAL_EXPOSURE - current_exposure
-                max_by_total = int(remaining // per_lot) if per_lot > 0 else 0
+                margin_per_lot = price * volume_multiple * margin_rate
+                # 单笔保证金不超100万，总保证金不超600万
+                max_by_trade = int(MAX_PER_TRADE // margin_per_lot) if margin_per_lot > 0 else 0
+                remaining = MAX_TOTAL_EXPOSURE - current_margin
+                max_by_total = int(remaining // margin_per_lot) if margin_per_lot > 0 else 0
                 volume = min(max_by_trade, max_by_total)
 
                 if volume > 0:
                     open_trade = Trade(i, df["date"].iloc[i], price, volume)
-                    current_exposure += price * volume_multiple * volume
+                    current_margin += price * volume_multiple * margin_rate * volume
                     monitoring = False
 
     bbands_data = {"upper": upper, "middle": middle, "lower": lower, "bandwidth": bandwidth}
     return trades, bbands_data
 
 
-def calc_trade_pnl(trades, volume_multiple, fee_rate):
+def calc_trade_pnl(trades, volume_multiple, fee_rate, margin_rate):
     """计算交易盈亏明细"""
     results = []
     for t in trades:
@@ -143,6 +166,8 @@ def calc_trade_pnl(trades, volume_multiple, fee_rate):
         gross = points * t.volume * volume_multiple
         fee = (t.open_price + t.close_price) * t.volume * volume_multiple * fee_rate
         net = gross - fee
+        margin = t.open_price * t.volume * volume_multiple * margin_rate
+        return_rate = net / margin * 100 if margin > 0 else 0
         holding_days = (pd.Timestamp(t.close_date) - pd.Timestamp(t.open_date)).days
         results.append({
             "open_date": t.open_date,
@@ -151,9 +176,11 @@ def calc_trade_pnl(trades, volume_multiple, fee_rate):
             "close_price": t.close_price,
             "volume": t.volume,
             "holding_days": holding_days,
+            "margin": round(margin, 2),
             "points": round(points, 2),
             "fee": round(fee, 2),
             "net_pnl": round(net, 2),
+            "return_rate": round(return_rate, 2),
             "win": net > 0,
         })
     return results
@@ -194,10 +221,11 @@ def run_all(data_dir, params):
         df = df.sort_values("date").reset_index(drop=True)
 
         vm = get_multiplier(instrument)
-        params_with_vm = {**params, "volume_multiple": vm}
+        mr = get_margin_rate(instrument)
+        params_with_vm = {**params, "volume_multiple": vm, "margin_rate": mr}
 
         trades, bbands = run_single_backtest(df, params_with_vm)
-        trade_details = calc_trade_pnl(trades, vm, params["fee_rate"])
+        trade_details = calc_trade_pnl(trades, vm, params["fee_rate"], mr)
 
         # 统计指标
         max_bw = float(np.nanmax(bbands["bandwidth"]))
@@ -213,6 +241,7 @@ def run_all(data_dir, params):
             "max_bandwidth": round(max_bw, 4),
             "bw_above_pct": round(bw_above_threshold, 1),
             "volume_multiple": vm,
+            "margin_rate": mr,
             "trade_count": len(trade_details),
             "trades": trade_details,
         }
@@ -235,6 +264,12 @@ def run_all(data_dir, params):
             peak = np.maximum.accumulate(cumulative)
             drawdown = cumulative - peak
             result["max_drawdown"] = round(float(drawdown.min()), 2)
+
+            total_margin = sum(t["margin"] for t in trade_details)
+            result["total_margin"] = round(total_margin, 2)
+            result["avg_return_rate"] = round(
+                sum(t["return_rate"] for t in trade_details) / len(trade_details), 2
+            )
 
         all_results.append(result)
 
