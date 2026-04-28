@@ -79,7 +79,6 @@ def main():
         base_params = {
             "bb_period": 20,
             "bb_std": 2.0,
-            "order_volume": 10,
             "bandwidth_threshold": 0.25,
             "breakout_threshold": 0.02,
             "fee_rate": 0.0001,
@@ -121,7 +120,7 @@ def generate_report(results):
     lines.append("| 带宽阈值 | 0.25 (25%) | 0.20 (20%) | (上轨-下轨)/中轨 > 此值 |")
     lines.append("| 突破阈值 | 0.02 (+2%) | 0.01 (+1%) | 收盘价 > 上轨×(1+此值) |")
     lines.append("| 趋势斜率窗口 | 3 | 3 | 最近3根K线斜率>0 |")
-    lines.append("| 每次开仓手数 | 10 | 10 | 固定仓位 |")
+    lines.append("| 每次开仓手数 | 动态计算 | 动态计算 | 总敞口1000万, 单笔上限100万, 同时持仓上限60%(600万) |")
     lines.append("| 手续费率 | 0.0001 | 0.0001 | 按金额万分之几计 |")
     lines.append("")
 

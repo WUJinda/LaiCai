@@ -59,7 +59,7 @@ def main():
                 json.dump(raw, f, ensure_ascii=False, default=str)
 
         base_params = {
-            "bb_period": 20, "bb_std": 2.0, "order_volume": 10,
+            "bb_period": 20, "bb_std": 2.0,
             "bandwidth_threshold": 0.25, "breakout_threshold": 0.02,
             "fee_rate": 0.0001,
         }
@@ -85,6 +85,7 @@ def main():
         lines.append("| 带宽阈值 | 0.25 (25%) | 0.20 (20%) | |")
         lines.append("| 突破阈值 | 0.02 (+2%) | 0.01 (+1%) | |")
         lines.append("| 趋势斜率窗口 | 3 | 3 | 最近3根K线斜率>0 |")
+        lines.append("| 每次开仓手数 | 动态计算 | 动态计算 | 总敞口1000万, 单笔上限100万, 同时持仓上限60% |")
         lines.append("")
 
         for mode_key, mode_label, mode_results in [

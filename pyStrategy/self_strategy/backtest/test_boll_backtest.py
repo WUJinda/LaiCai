@@ -7,7 +7,7 @@
 使用方式:
     python test_boll_backtest.py
     python test_boll_backtest.py --data ~/Desktop/quanda_exports/rb2601_kline.json
-    python test_boll_backtest.py --bb-period 26 --bb-std 2.0 --volume 10
+    python test_boll_backtest.py --bb-period 26 --bb-std 2.0
     python test_boll_backtest.py --mode relaxed
 """
 
@@ -33,7 +33,6 @@ plt.rcParams["axes.unicode_minus"] = False
 DEFAULT_PARAMS = {
     "bb_period": 20,
     "bb_std": 2.0,
-    "order_volume": 10,
     "bandwidth_threshold": 0.25,
     "breakout_threshold": 0.02,
     # 品种合约信息（用于计算盈亏金额）
@@ -41,6 +40,11 @@ DEFAULT_PARAMS = {
     "margin_rate": 0.13,    # 保证金率
     "fee_rate": 0.0001,     # 手续费率（万分之几）
 }
+
+# 资金管理（敞口口径）
+TOTAL_CAPITAL = 10_000_000      # 总敞口资金 1000万
+MAX_PER_TRADE = 1_000_000       # 单笔交易上限 100万
+MAX_TOTAL_EXPOSURE = 6_000_000  # 同时持仓上限 600万 (60%)
 
 # 模式预设
 MODE_PRESETS = {
@@ -135,6 +139,8 @@ def run_backtest(df: pd.DataFrame, params: dict) -> list[Trade]:
     monitoring = False
     trend_slope_window = 3
     bb_period = params["bb_period"]
+    volume_multiple = params["volume_multiple"]
+    current_exposure = 0  # 当前持仓敞口
 
     bb_upper = df["bb_upper"].values
     bb_middle = df["bb_middle"].values
@@ -166,6 +172,7 @@ def run_backtest(df: pd.DataFrame, params: dict) -> list[Trade]:
 
         # 平仓逻辑: 持有空仓且价格回到中轨以下
         if open_trade is not None and close_vals[i] <= bb_middle[i]:
+            current_exposure -= open_trade.open_price * volume_multiple * open_trade.volume
             open_trade.close(df.iloc[i]["date"], close_vals[i])
             trades.append(open_trade)
             open_trade = None
@@ -174,8 +181,18 @@ def run_backtest(df: pd.DataFrame, params: dict) -> list[Trade]:
         if open_trade is None and monitoring:
             breakout_price = bb_upper[i] * (1 + params["breakout_threshold"])
             if close_vals[i] > breakout_price:
-                open_trade = Trade(df.iloc[i]["date"], close_vals[i], params["order_volume"])
-                monitoring = False
+                price = close_vals[i]
+                per_lot = price * volume_multiple  # 1手敞口
+                # 单笔不超100万，总持仓不超600万
+                max_by_trade = int(MAX_PER_TRADE // per_lot) if per_lot > 0 else 0
+                remaining = MAX_TOTAL_EXPOSURE - current_exposure
+                max_by_total = int(remaining // per_lot) if per_lot > 0 else 0
+                volume = min(max_by_trade, max_by_total)
+
+                if volume > 0:
+                    open_trade = Trade(df.iloc[i]["date"], price, volume)
+                    current_exposure += price * volume_multiple * volume
+                    monitoring = False
 
     return trades
 
@@ -225,7 +242,7 @@ def print_report(trades_df: pd.DataFrame, params: dict):
     print(f"\n策略参数:")
     print(f"  布林带周期: {params['bb_period']}, 标准差倍数: {params['bb_std']}")
     print(f"  带宽阈值: {params['bandwidth_threshold']}, 突破阈值: {params['breakout_threshold']}")
-    print(f"  每次开仓手数: {params['order_volume']}")
+    print(f"  资金管理: 总敞口{TOTAL_CAPITAL/10000:.0f}万, 单笔上限{MAX_PER_TRADE/10000:.0f}万, 同时持仓上限{MAX_TOTAL_EXPOSURE/10000:.0f}万")
     print(f"  合约乘数: {params['volume_multiple']}, 手续费率: {params['fee_rate']}")
 
     if trades_df.empty:
@@ -355,7 +372,6 @@ def parse_args():
     parser.add_argument("--data", type=str, default=DEFAULT_DATA_PATH, help="K线数据文件路径 (JSON)")
     parser.add_argument("--bb-period", type=int, default=DEFAULT_PARAMS["bb_period"], help="布林带周期")
     parser.add_argument("--bb-std", type=float, default=DEFAULT_PARAMS["bb_std"], help="标准差倍数")
-    parser.add_argument("--volume", type=int, default=DEFAULT_PARAMS["order_volume"], help="下单手数")
     parser.add_argument("--bandwidth", type=float, default=None, help="带宽阈值（覆盖模式预设）")
     parser.add_argument("--breakout", type=float, default=None, help="突破阈值（覆盖模式预设）")
     parser.add_argument("--mode", type=str, choices=["strict", "relaxed"], default="strict",
@@ -378,7 +394,6 @@ def main():
         **DEFAULT_PARAMS,
         "bb_period": args.bb_period,
         "bb_std": args.bb_std,
-        "order_volume": args.volume,
         "bandwidth_threshold": args.bandwidth if args.bandwidth is not None else mode_preset["bandwidth_threshold"],
         "breakout_threshold": args.breakout if args.breakout is not None else mode_preset["breakout_threshold"],
         "volume_multiple": args.multiplier,

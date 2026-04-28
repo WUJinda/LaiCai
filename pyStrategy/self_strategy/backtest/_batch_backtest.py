@@ -9,6 +9,13 @@ import os
 import numpy as np
 import pandas as pd
 
+# ============================================================
+# 资金管理（敞口口径）
+# ============================================================
+TOTAL_CAPITAL = 10_000_000      # 总敞口资金 1000万
+MAX_PER_TRADE = 1_000_000       # 单笔交易上限 100万
+MAX_TOTAL_EXPOSURE = 6_000_000  # 同时持仓上限 600万 (60%)
+
 # 合约乘数表（各品种）
 MULTIPLIERS = {
     # 上期所 SHFE
@@ -63,6 +70,7 @@ def run_single_backtest(df, params):
     """对单个 DataFrame 运行回测，返回 (trades, bbands_data)"""
     bb_period = params["bb_period"]
     bb_std = params["bb_std"]
+    volume_multiple = params["volume_multiple"]
 
     upper, middle, lower, bandwidth = calc_bbands(
         df["close"].values, bb_period, bb_std
@@ -72,6 +80,7 @@ def run_single_backtest(df, params):
     open_trade = None
     monitoring = False
     trend_slope_window = 3
+    current_exposure = 0  # 当前持仓敞口
 
     close_vals = df["close"].values
 
@@ -101,6 +110,7 @@ def run_single_backtest(df, params):
         # 平仓
         if open_trade is not None and close_vals[i] <= bb_middle:
             open_trade.close(i, df["date"].iloc[i], close_vals[i])
+            current_exposure -= open_trade.open_price * volume_multiple * open_trade.volume
             trades.append(open_trade)
             open_trade = None
 
@@ -108,8 +118,18 @@ def run_single_backtest(df, params):
         if open_trade is None and monitoring:
             breakout_price = bb_upper * (1 + params["breakout_threshold"])
             if close_vals[i] > breakout_price:
-                open_trade = Trade(i, df["date"].iloc[i], close_vals[i], params["order_volume"])
-                monitoring = False
+                price = close_vals[i]
+                per_lot = price * volume_multiple  # 1手敞口
+                # 单笔不超100万，总持仓不超600万
+                max_by_trade = int(MAX_PER_TRADE // per_lot) if per_lot > 0 else 0
+                remaining = MAX_TOTAL_EXPOSURE - current_exposure
+                max_by_total = int(remaining // per_lot) if per_lot > 0 else 0
+                volume = min(max_by_trade, max_by_total)
+
+                if volume > 0:
+                    open_trade = Trade(i, df["date"].iloc[i], price, volume)
+                    current_exposure += price * volume_multiple * volume
+                    monitoring = False
 
     bbands_data = {"upper": upper, "middle": middle, "lower": lower, "bandwidth": bandwidth}
     return trades, bbands_data
@@ -174,8 +194,9 @@ def run_all(data_dir, params):
         df = df.sort_values("date").reset_index(drop=True)
 
         vm = get_multiplier(instrument)
+        params_with_vm = {**params, "volume_multiple": vm}
 
-        trades, bbands = run_single_backtest(df, params)
+        trades, bbands = run_single_backtest(df, params_with_vm)
         trade_details = calc_trade_pnl(trades, vm, params["fee_rate"])
 
         # 统计指标
