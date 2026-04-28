@@ -3,7 +3,8 @@
     "allow": [
       "Read(//c/Users/Administrator/Desktop/**)",
       "WebSearch",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "Bash(python *)"
     ]
   }
 }

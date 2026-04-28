@@ -382,3 +382,5 @@ vcruntime140_1.dll
 vcruntime140.dll
 vixinstrument.data
 docs
+.claude
+pyStrategy/self_strategy/backtest/__pycache__/_batch_backtest_atr.cpython-313.pyc
