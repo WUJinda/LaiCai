@@ -8,6 +8,8 @@ from datetime import datetime
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 
@@ -49,76 +51,139 @@ def calc_bbands_df(df, period=20, std_dev=2.0):
 # 生成过程图
 # ============================================================
 def plot_trade_process(records, trades, instrument, period_label, mode_label, output_path):
-    """绘制交易过程图：价格+布林带+开平仓标记+连线"""
+    """绘制交易过程图：OHLC蜡烛图 + 布林带 + 开平仓标记（仅展示交易点附近）"""
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(df["date"])
     df = calc_bbands_df(df)
+    df = df.reset_index(drop=True)
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 10), gridspec_kw={"height_ratios": [3, 1]})
+    # 匹配交易到 DataFrame 行索引
+    trade_info = []
+    for t in trades:
+        open_date = pd.Timestamp(t["open_date"])
+        close_date = pd.Timestamp(t["close_date"])
+        open_matches = df.index[df["date"] == open_date]
+        close_matches = df.index[df["date"] == close_date]
+        if len(open_matches) > 0 and len(close_matches) > 0:
+            trade_info.append((open_matches[0], close_matches[0], t))
+    if not trade_info:
+        return
 
-    # 上图：价格 + 布林带 + 交易标记
-    ax1.plot(df["date"], df["close"], color="black", linewidth=0.8, label="收盘价")
-    ax1.plot(df["date"], df["bb_upper"], "r--", linewidth=0.6, alpha=0.7, label="上轨")
-    ax1.plot(df["date"], df["bb_middle"], "b--", linewidth=0.6, alpha=0.7, label="中轨")
-    ax1.plot(df["date"], df["bb_lower"], "g--", linewidth=0.6, alpha=0.7, label="下轨")
+    # 截取交易区域：首笔开仓前10根 ~ 末笔平仓后10根
+    earliest_open = min(oi for oi, ci, t in trade_info)
+    latest_close = max(ci for oi, ci, t in trade_info)
+    start_idx = max(0, earliest_open - 10)
+    end_idx = min(len(df) - 1, latest_close + 10)
 
-    # 标记交易
-    for j, t in enumerate(trades):
-        open_date = t["open_date"]
-        close_date = t["close_date"]
+    df_slice = df.iloc[start_idx:end_idx + 1].copy().reset_index(drop=True)
+    n = len(df_slice)
+    x = np.arange(n)
+
+    fig_w = max(12, min(24, n * 0.25))
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 10),
+                                    gridspec_kw={"height_ratios": [3, 1]})
+
+    # --- OHLC 蜡烛图 ---
+    bar_width = 0.6
+    for i in range(n):
+        o = float(df_slice["open"].iloc[i])
+        h = float(df_slice["high"].iloc[i])
+        l = float(df_slice["low"].iloc[i])
+        c = float(df_slice["close"].iloc[i])
+
+        up = c >= o
+        color = "#D32F2F" if up else "#388E3C"
+
+        ax1.plot([i, i], [l, h], color=color, linewidth=0.5, zorder=1)
+        body_bottom = min(o, c)
+        body_height = abs(c - o)
+        if body_height < 1e-6:
+            body_height = max((h - l) * 0.01, 0.001)
+        rect = Rectangle((i - bar_width / 2, body_bottom), bar_width, body_height,
+                          facecolor=color, edgecolor=color, alpha=0.9, zorder=2)
+        ax1.add_patch(rect)
+
+    # --- 布林带 ---
+    ax1.plot(x, df_slice["bb_upper"].values, "r--", linewidth=0.8, alpha=0.7, label="上轨")
+    ax1.plot(x, df_slice["bb_middle"].values, "b--", linewidth=0.8, alpha=0.7, label="中轨")
+    ax1.plot(x, df_slice["bb_lower"].values, "g--", linewidth=0.8, alpha=0.7, label="下轨")
+
+    # --- 日期刻度 ---
+    if period_label in ("H2", "H4"):
+        fmt = "%m-%d %H:%M"
+    else:
+        fmt = "%Y-%m-%d"
+    date_labels = [d.strftime(fmt) for d in df_slice["date"]]
+    tick_step = max(1, n // 15)
+    ax1.set_xticks(x[::tick_step])
+    ax1.set_xticklabels(date_labels[::tick_step], rotation=45, ha="right", fontsize=7)
+
+    # --- 交易标记 ---
+    for j, (open_idx, close_idx, t) in enumerate(trade_info):
+        sx = open_idx - start_idx
+        cx = close_idx - start_idx
         open_price = t["open_price"]
         close_price = t["close_price"]
 
-        # 开仓点（红色向下三角）
-        ax1.scatter(open_date, open_price, marker="v", color="red", s=150, zorder=5, edgecolors="darkred", linewidths=1.5)
-        ax1.annotate(f"开{j+1}\n{open_price:,.0f}", (open_date, open_price),
+        # 开仓点
+        ax1.scatter(sx, open_price, marker="v", color="red", s=150, zorder=5,
+                    edgecolors="darkred", linewidths=1.5)
+        ax1.annotate(f"开{j+1}\n{open_price:,.0f}", (sx, open_price),
                      textcoords="offset points", xytext=(10, -30), fontsize=8, color="darkred",
                      arrowprops=dict(arrowstyle="->", color="darkred", lw=0.8))
 
-        # 平仓点（绿色向上三角）
-        ax1.scatter(close_date, close_price, marker="^", color="limegreen", s=150, zorder=5, edgecolors="darkgreen", linewidths=1.5)
-        ax1.annotate(f"平{j+1}\n{close_price:,.0f}", (close_date, close_price),
+        # 平仓点
+        ax1.scatter(cx, close_price, marker="^", color="limegreen", s=150, zorder=5,
+                    edgecolors="darkgreen", linewidths=1.5)
+        ax1.annotate(f"平{j+1}\n{close_price:,.0f}", (cx, close_price),
                      textcoords="offset points", xytext=(10, 20), fontsize=8, color="darkgreen",
                      arrowprops=dict(arrowstyle="->", color="darkgreen", lw=0.8))
 
-        # 开仓到平仓的连线（虚线）
-        ax1.plot([open_date, close_date], [open_price, close_price],
-                 "r--", linewidth=1, alpha=0.5)
+        # 开仓→平仓连线
+        ax1.plot([sx, cx], [open_price, close_price], "r--", linewidth=1, alpha=0.5, zorder=3)
 
         # 持仓区间着色
-        ax1.axvspan(open_date, close_date, alpha=0.08, color="red")
+        ax1.axvspan(sx - 0.5, cx + 0.5, alpha=0.08, color="red")
 
         # 盈亏标注
         pnl = t.get("net_pnl", 0)
-        mid_date = open_date + (close_date - open_date) / 2
+        mid_x = (sx + cx) / 2
         mid_price = (open_price + close_price) / 2
-        color = "darkgreen" if pnl > 0 else "darkred"
+        pnl_color = "darkgreen" if pnl > 0 else "darkred"
         ax1.annotate(f"{'盈利' if pnl > 0 else '亏损'} {pnl:+,.0f}",
-                     (mid_date, mid_price), fontsize=9, fontweight="bold",
-                     ha="center", va="bottom", color=color,
+                     (mid_x, mid_price), fontsize=9, fontweight="bold",
+                     ha="center", va="bottom", color=pnl_color,
                      bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7))
 
-    ax1.scatter([], [], marker="v", color="red", s=100, label="开空仓")
-    ax1.scatter([], [], marker="^", color="limegreen", s=100, label="平空仓")
+    legend_elements = [
+        Line2D([0], [0], color="r", linestyle="--", label="上轨"),
+        Line2D([0], [0], color="b", linestyle="--", label="中轨"),
+        Line2D([0], [0], color="g", linestyle="--", label="下轨"),
+        Line2D([0], [0], marker="v", color="red", linestyle="None", label="开空仓", markersize=8),
+        Line2D([0], [0], marker="^", color="limegreen", linestyle="None", label="平空仓", markersize=8),
+    ]
+    ax1.legend(handles=legend_elements, loc="upper left", fontsize=9)
     ax1.set_title(f"{instrument} {period_label} {mode_label} - 交易过程图", fontsize=14, fontweight="bold")
     ax1.set_ylabel("价格")
-    ax1.legend(loc="upper left", fontsize=9)
+    ax1.set_xlim(-1, n)
     ax1.grid(True, alpha=0.3)
 
-    # 下图：累计收益
-    pnls = [t.get("net_pnl", 0) for t in trades]
-    close_dates = [t["close_date"] for t in trades]
+    # --- 下图：累计收益 ---
+    pnls = [t.get("net_pnl", 0) for _, _, t in trade_info]
+    close_positions = [ci - start_idx for _, ci, _ in trade_info]
     cumulative = np.cumsum(pnls)
 
-    ax2.step(close_dates, cumulative, where="post", color="royalblue", linewidth=1.5)
-    ax2.fill_between(close_dates, cumulative, 0, step="post",
+    ax2.step(close_positions, cumulative, where="post", color="royalblue", linewidth=1.5)
+    ax2.fill_between(close_positions, cumulative, 0, step="post",
                      where=[c >= 0 for c in cumulative], alpha=0.3, color="green")
-    ax2.fill_between(close_dates, cumulative, 0, step="post",
+    ax2.fill_between(close_positions, cumulative, 0, step="post",
                      where=[c < 0 for c in cumulative], alpha=0.3, color="red")
     ax2.axhline(y=0, color="gray", linewidth=0.5)
     ax2.set_title("累计收益", fontsize=12)
     ax2.set_ylabel("盈亏金额")
-    ax2.set_xlabel("日期")
+    ax2.set_xlim(-1, n)
+    ax2.set_xticks(x[::tick_step])
+    ax2.set_xticklabels(date_labels[::tick_step], rotation=45, ha="right", fontsize=7)
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
