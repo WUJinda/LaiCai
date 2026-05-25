@@ -291,3 +291,41 @@ Apr 29 00:09:02 OS-20230509ARQQ infi 0[16852]: event CLoginInitService::ProcessM
 
 Apr 29 00:09:02 OS-20230509ARQQ infi 0[16852]: event CLoginInitService::ProcessRspMdUserLoginEvent 4 账号20301363:收到登录信息，是否登录成功：1 In Line 910
 
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [adO], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [ad], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [INE], InstrumentID is [bc], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [INE], InstrumentID is [bcO], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [al], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [ao], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [alO], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [cu], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [aoO], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [cuO], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [ni], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [pb], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [pbO], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [sn], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [niO], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [zn], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [snO], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [znO], InstrumentStatus is [1]  In Line 942
+
+Apr 29 01:00:00 OS-20230509ARQQ infi 0[16852]: event CMarketDataService::ProcessRtnInstStatusEvent 4 ExchangeID is [SHFE], InstrumentID is [ss], InstrumentStatus is [1]  In Line 942
+
