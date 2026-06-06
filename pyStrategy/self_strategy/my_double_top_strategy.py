@@ -45,7 +45,7 @@ class Params(BaseParams):
     # 布林带参数
     bb_period: int = Field(default=20, title="布林带周期", ge=2)
     bb_std: float = Field(default=2.0, title="标准差倍数", ge=0.1)
-    bandwidth_min: float = Field(default=0.10, title="最小带宽")
+    bandwidth_min: float = Field(default=0.15, title="最小带宽")
 
     # 左峰参数
     left_peak_lookback: int = Field(default=30, title="左峰回溯窗口", ge=5)

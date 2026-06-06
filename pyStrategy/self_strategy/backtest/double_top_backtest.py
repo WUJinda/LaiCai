@@ -58,7 +58,7 @@ MARGIN_RATES = {
 DEFAULT_PARAMS = {
     "bb_period": 20,
     "bb_std": 2.0,
-    "bandwidth_min": 0.10,
+    "bandwidth_min": 0.15,
     "left_peak_lookback": 30,
     "zone_lower": 0.99,
     "zone_upper": 1.02,
@@ -720,7 +720,7 @@ def build_report(all_results, params):
     lines.append(f"| fee_rate | {params['fee_rate']} | 手续费率（单边） |")
     lines.append("")
     lines.append("### 策略规则")
-    lines.append("1. 布林带带宽 > 10% → 进入监控")
+    lines.append("1. 布林带带宽 > 15% → 进入监控")
     lines.append("2. 收盘价 ≤ 布林中轨 → 回溯30日找左峰 H_left")
     lines.append("3. 价格进入 [0.99×H_left, 1.02×H_left] → 左侧交易立即做空")
     lines.append("4. 价格触及布林中轨 → 止盈平仓")
@@ -885,8 +885,8 @@ def main():
                         help=f"D1数据目录 (默认: {DEFAULT_DATA_DIR})")
     parser.add_argument("--instrument", default=None,
                         help="指定品种代码 (如 rb2605)，不指定则回测全部")
-    parser.add_argument("--bandwidth-min", type=float, default=0.10,
-                        help="最小带宽阈值 (默认: 0.10)")
+    parser.add_argument("--bandwidth-min", type=float, default=0.15,
+                        help="最小带宽阈值 (默认: 0.15)")
     parser.add_argument("--zone-lower", type=float, default=0.99,
                         help="入场区间下沿 (默认: 0.99)")
     parser.add_argument("--zone-upper", type=float, default=1.02,
