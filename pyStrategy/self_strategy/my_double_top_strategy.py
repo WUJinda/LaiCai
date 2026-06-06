@@ -237,15 +237,17 @@ class DoubleTopStrategy(BaseStrategy):
         """计算布林带指标和带宽"""
         producer = self.kline_generator.producer
 
-        upper, middle, lower = producer.bbands(
-            period=self.params_map.bb_period,
-            std_dev=self.params_map.bb_std,
-            array=True
+        bb_middle = float(producer.sma(self.params_map.bb_period))
+        bb_upper, bb_lower = producer.boll(
+            timeperiod=self.params_map.bb_period,
+            deviation=int(self.params_map.bb_std)
         )
+        bb_upper = float(bb_upper)
+        bb_lower = float(bb_lower)
 
-        self.state_map.bb_upper = upper[-1]
-        self.state_map.bb_middle = middle[-1]
-        self.state_map.bb_lower = lower[-1]
+        self.state_map.bb_upper = bb_upper
+        self.state_map.bb_middle = bb_middle
+        self.state_map.bb_lower = bb_lower
 
         if self.state_map.bb_middle > 0:
             self.state_map.bandwidth = (
@@ -283,7 +285,8 @@ class DoubleTopStrategy(BaseStrategy):
                 )
 
         # ---- WAITING_PULLBACK: 等待价格回落到中轨 ----
-        elif self._state == STATE_WAITING_PULLBACK:
+        # 注意: 用 if 而非 elif，允许同一根K线内完成 IDLE→WAITING_PULLBACK→LEFT_PEAK_FOUND
+        if self._state == STATE_WAITING_PULLBACK:
             if close <= self.state_map.bb_middle:
                 self._find_left_peak()
                 self._set_state(STATE_LEFT_PEAK_FOUND)
@@ -297,6 +300,15 @@ class DoubleTopStrategy(BaseStrategy):
         # ---- LEFT_PEAK_FOUND: 等待价格回到左峰区间 ----
         elif self._state == STATE_LEFT_PEAK_FOUND:
             self._entry_bar_count += 1
+
+            # 超时退出：等待超过回溯窗口仍未进入区间 → 形态失效
+            if self._entry_bar_count > self.params_map.left_peak_lookback:
+                self.output(
+                    f"形态超时: 等待{self._entry_bar_count}根K线未进入区间, "
+                    f"重置"
+                )
+                self._reset()
+                return
 
             # 价格突破区间上沿 → 形态失效
             if close > self._h_left * self.params_map.zone_upper:
@@ -401,7 +413,10 @@ class DoubleTopStrategy(BaseStrategy):
             price=kline.close - self.params_map.pay_up,
             order_direction="sell"
         )
-        self.order_id.add(order_id)
+        if order_id is not None:
+            self.order_id.add(order_id)
+        else:
+            self.output("❌ 开空仓失败: send_order 返回 None")
 
         self.output(
             f"开空仓: 价格进入双峰区间, "
@@ -420,7 +435,10 @@ class DoubleTopStrategy(BaseStrategy):
             price=self.state_map.bb_middle + self.params_map.pay_up,
             order_direction="buy"
         )
-        self.order_id.add(order_id)
+        if order_id is not None:
+            self.order_id.add(order_id)
+        else:
+            self.output("❌ 平仓失败: auto_close_position 返回 None")
 
     # ========================================================
     # 资金管理 — 动态计算下单手数
@@ -450,4 +468,4 @@ class DoubleTopStrategy(BaseStrategy):
         max_by_total = int(MAX_TOTAL_EXPOSURE // margin_per_lot)
         volume = min(max_by_trade, max_by_total)
 
-        return max(volume, 1)
+        return max(volume, 0)

@@ -195,6 +195,7 @@ def run_single_backtest(df, params, instrument_id="?"):
     h_left = 0.0
     h_left_idx = -1
     search_start = 0  # 30日扫描窗口起点
+    entry_bar_count = 0  # LEFT_PEAK_FOUND 后的K线计数（超时退出）
 
     n = len(df)
 
@@ -233,7 +234,8 @@ def run_single_backtest(df, params, instrument_id="?"):
                 state_log.append((i, old, state,
                     f"带宽达标: bw={bw:.4f} > {bandwidth_min}"))
 
-        elif state == STATE_WAITING_PULLBACK:
+        # 注意: 用 if 而非 elif，允许同一根K线内完成 IDLE→WAITING_PULLBACK→LEFT_PEAK_FOUND
+        if state == STATE_WAITING_PULLBACK:
             if close <= bb_middle:
                 # 回溯 lookback 找左峰（包含当前bar，用high）
                 search_start = max(0, i - lookback + 1)
@@ -244,11 +246,24 @@ def run_single_backtest(df, params, instrument_id="?"):
 
                 old = state
                 state = STATE_LEFT_PEAK_FOUND
+                entry_bar_count = 0  # 重置等待计数
                 state_log.append((i, old, state,
                     f"左峰确认: H_left={h_left:.2f}, "
                     f"区间=[{h_left*zone_lower:.2f}, {h_left*zone_upper:.2f}]"))
 
         elif state == STATE_LEFT_PEAK_FOUND:
+            entry_bar_count += 1
+
+            # 超时退出：等待超过回溯窗口仍未进入区间 → 形态失效
+            if entry_bar_count > lookback:
+                state_log.append((i, STATE_LEFT_PEAK_FOUND, STATE_IDLE,
+                    f"形态超时: 等待{entry_bar_count}根K线未进入区间, 重置"))
+                state = STATE_IDLE
+                h_left = 0.0
+                h_left_idx = -1
+                entry_bar_count = 0
+                continue
+
             # 价格突破区间上沿 → 形态失效
             if close > h_left * zone_upper:
                 old = state
@@ -257,6 +272,7 @@ def run_single_backtest(df, params, instrument_id="?"):
                     f"形态失效: close={close:.2f} > {h_left*zone_upper:.2f}"))
                 h_left = 0.0
                 h_left_idx = -1
+                entry_bar_count = 0
                 continue
 
             # 价格进入区间 → 做空
