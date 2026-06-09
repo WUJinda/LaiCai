@@ -61,6 +61,56 @@ def get_margin_rate(instrument_id: str) -> float:
     return 0.10  # 默认10%
 
 
+# ============================================================
+# 查表法带宽阈值（各品种各周期 P75，来自 bandwidth_stats.json）
+# 键格式: "品种_周期" 如 "ag_H2", "ag_H4", "ag_D1"
+# ============================================================
+_BANDWIDTH_STATS_PATH = os.path.join(os.path.dirname(__file__), "bandwidth_stats.json")
+
+
+def _load_bandwidth_thresholds():
+    """从 bandwidth_stats.json 加载各品种各周期的 P75 阈值"""
+    try:
+        with open(_BANDWIDTH_STATS_PATH, "r", encoding="utf-8") as f:
+            stats = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+    thresholds = {}
+    for key, val in stats.items():
+        if key.startswith("_"):
+            continue
+        symbol = val.get("品种代码", "")
+        period = val.get("K线周期", "")
+        if symbol and period:
+            lookup_key = f"{symbol}_{period}".upper()
+            thresholds[lookup_key] = val.get("P75_Q3", 0.04)
+    return thresholds
+
+
+# 模块加载时读取一次
+_BANDWIDTH_THRESHOLDS = _load_bandwidth_thresholds()
+
+
+def get_bandwidth_threshold(instrument_id: str, kline_style: str = "") -> float:
+    """根据合约代码+K线周期返回查表法带宽阈值，找不到时返回默认值"""
+    # 从 stats 表按 "品种_周期" 查找
+    for key, threshold in _BANDWIDTH_THRESHOLDS.items():
+        parts = key.rsplit("_", 1)
+        if len(parts) == 2:
+            sym, period = parts
+            if instrument_id.upper().startswith(sym) and period == kline_style.upper():
+                return threshold
+    # 回退：只用品种匹配（无周期数据时）
+    for key, threshold in _BANDWIDTH_THRESHOLDS.items():
+        parts = key.rsplit("_", 1)
+        if len(parts) == 2:
+            sym = parts[0]
+            if instrument_id.upper().startswith(sym):
+                return threshold
+    return 0.04  # 默认阈值
+
+
 def calc_bbands(close_array, period=20, std_dev=2.0):
     """计算布林带"""
     close = pd.Series(close_array.astype(float))
@@ -222,7 +272,8 @@ def run_all(data_dir, params):
 
         vm = get_multiplier(instrument)
         mr = get_margin_rate(instrument)
-        params_with_vm = {**params, "volume_multiple": vm, "margin_rate": mr}
+        bw_threshold = get_bandwidth_threshold(instrument)
+        params_with_vm = {**params, "volume_multiple": vm, "margin_rate": mr, "bandwidth_threshold": bw_threshold}
 
         trades, bbands = run_single_backtest(df, params_with_vm)
         trade_details = calc_trade_pnl(trades, vm, params["fee_rate"], mr)
