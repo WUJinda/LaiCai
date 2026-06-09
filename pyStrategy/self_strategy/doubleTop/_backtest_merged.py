@@ -22,7 +22,7 @@ DATA_DIRS = {
     "H4": os.path.join(DESKTOP, "quanda_exports_h4"),
     "D1": os.path.join(DESKTOP, "quanda_exports_d1"),
 }
-OUTPUT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "docs", "res"))
+OUTPUT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "results"))
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "backtest_report_merged.md")
 
 plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "DejaVu Sans"]

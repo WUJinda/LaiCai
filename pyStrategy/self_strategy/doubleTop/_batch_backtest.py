@@ -62,52 +62,66 @@ def get_margin_rate(instrument_id: str) -> float:
 
 
 # ============================================================
-# 查表法带宽阈值（各品种各周期 P75，来自 bandwidth_stats.json）
-# 键格式: "品种_周期" 如 "ag_H2", "ag_H4", "ag_D1"
+# 查表法带宽阈值（各品种各周期，来自 bandwidth_stats.json）
+# ag（白银）使用 P90，其余品种全部使用 P75
 # ============================================================
+_P90_INSTRUMENTS = {"AG"}  # 使用 P90 的品种列表
 _BANDWIDTH_STATS_PATH = os.path.join(os.path.dirname(__file__), "bandwidth_stats.json")
 
 
-def _load_bandwidth_thresholds():
-    """从 bandwidth_stats.json 加载各品种各周期的 P75 阈值"""
+def _load_bandwidth_data():
+    """从 bandwidth_stats.json 加载各品种各周期的 P75/P90，ag 用 P90，其余用 P75"""
     try:
         with open(_BANDWIDTH_STATS_PATH, "r", encoding="utf-8") as f:
             stats = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
-    thresholds = {}
+    # 构建完整阈值表
+    data = {}
     for key, val in stats.items():
-        if key.startswith("_"):
+        if key.startswith("_") or "_" not in key:
             continue
-        symbol = val.get("品种代码", "")
-        period = val.get("K线周期", "")
-        if symbol and period:
-            lookup_key = f"{symbol}_{period}".upper()
-            thresholds[lookup_key] = val.get("P75_Q3", 0.04)
-    return thresholds
+        parts = key.rsplit("_", 1)
+        if len(parts) == 2:
+            sym, period = parts
+            lookup_key = f"{sym}_{period}".upper()
+            use_p90 = sym.upper() in _P90_INSTRUMENTS
+            pct_key = "P90" if use_p90 else "P75_Q3"
+            data[lookup_key] = {
+                "threshold": val.get(pct_key, val.get("P75_Q3", 0.04)),
+                "percentile": "P90" if use_p90 else "P75",
+                "P75": val.get("P75_Q3", 0),
+                "P90": val.get("P90", 0),
+            }
+    return data
 
 
 # 模块加载时读取一次
-_BANDWIDTH_THRESHOLDS = _load_bandwidth_thresholds()
+_BANDWIDTH_DATA = _load_bandwidth_data()
 
 
 def get_bandwidth_threshold(instrument_id: str, kline_style: str = "") -> float:
-    """根据合约代码+K线周期返回查表法带宽阈值，找不到时返回默认值"""
-    # 从 stats 表按 "品种_周期" 查找
-    for key, threshold in _BANDWIDTH_THRESHOLDS.items():
+    """根据合约代码+K线周期返回查表法带宽阈值（自动选P75或P90）"""
+    # 按品种代码长度降序排列，避免 "A" 抢先匹配 "AG"
+    sorted_items = sorted(
+        _BANDWIDTH_DATA.items(),
+        key=lambda x: len(x[0].rsplit("_", 1)[0]),
+        reverse=True,
+    )
+    for key, vals in sorted_items:
         parts = key.rsplit("_", 1)
         if len(parts) == 2:
             sym, period = parts
             if instrument_id.upper().startswith(sym) and period == kline_style.upper():
-                return threshold
-    # 回退：只用品种匹配（无周期数据时）
-    for key, threshold in _BANDWIDTH_THRESHOLDS.items():
+                return vals["threshold"]
+    # 回退：只用品种匹配
+    for key, vals in sorted_items:
         parts = key.rsplit("_", 1)
         if len(parts) == 2:
             sym = parts[0]
             if instrument_id.upper().startswith(sym):
-                return threshold
+                return vals["threshold"]
     return 0.04  # 默认阈值
 
 
@@ -272,7 +286,7 @@ def run_all(data_dir, params):
 
         vm = get_multiplier(instrument)
         mr = get_margin_rate(instrument)
-        bw_threshold = get_bandwidth_threshold(instrument)
+        bw_threshold = get_bandwidth_threshold(instrument, kline_style)
         params_with_vm = {**params, "volume_multiple": vm, "margin_rate": mr, "bandwidth_threshold": bw_threshold}
 
         trades, bbands = run_single_backtest(df, params_with_vm)

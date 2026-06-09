@@ -67,7 +67,7 @@ DEFAULT_PARAMS = {
 
 # 输出目录
 OUTPUT_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "docs", "res")
+    os.path.join(os.path.dirname(__file__), "results", "double_top")
 )
 DESKTOP = os.path.join(os.path.expanduser("~"), "Desktop")
 DEFAULT_DATA_DIR = os.path.join(DESKTOP, "quanda_exports_d1")
