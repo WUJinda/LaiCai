@@ -100,8 +100,6 @@ _INSTRUMENT_PERCENTILE = {
     "ZN_H2": "P75", "ZN_H4": "P80", "ZN_D1": "P75",
 }
 
-# 向后兼容：旧代码引用 _P90_INSTRUMENTS 的地方
-_P90_INSTRUMENTS = {"AG"}  # deprecated，不再用于阈值选择逻辑
 
 _BANDWIDTH_STATS_PATH = os.path.join(os.path.dirname(__file__), "bandwidth_stats.json")
 
@@ -163,29 +161,49 @@ def _load_bandwidth_data():
 # 模块加载时读取一次
 _BANDWIDTH_DATA = _load_bandwidth_data()
 
+# 预排序（按品种代码长度降序），避免每次调用重复排序
+_SORTED_BW_ITEMS = sorted(
+    _BANDWIDTH_DATA.items(),
+    key=lambda x: len(x[0].rsplit("_", 1)[0]),
+    reverse=True,
+)
 
-def get_bandwidth_threshold(instrument_id: str, kline_style: str = "") -> float:
-    """根据合约代码+K线周期返回查表法带宽阈值（自动选P75或P90）"""
-    # 按品种代码长度降序排列，避免 "A" 抢先匹配 "AG"
-    sorted_items = sorted(
-        _BANDWIDTH_DATA.items(),
-        key=lambda x: len(x[0].rsplit("_", 1)[0]),
-        reverse=True,
-    )
-    for key, vals in sorted_items:
+
+def _find_bw_entry(instrument_id: str, kline_style: str = ""):
+    """查找品种+周期对应的 _BANDWIDTH_DATA 条目，返回 (key, vals) 或 (None, None)"""
+    iid = instrument_id.upper()
+    ks = kline_style.upper()
+    # 精确匹配：品种+周期
+    for key, vals in _SORTED_BW_ITEMS:
         parts = key.rsplit("_", 1)
         if len(parts) == 2:
             sym, period = parts
-            if instrument_id.upper().startswith(sym) and period == kline_style.upper():
-                return vals["threshold"]
-    # 回退：只用品种匹配
-    for key, vals in sorted_items:
+            if iid.startswith(sym) and period == ks:
+                return key, vals
+    # 兜底：仅匹配品种
+    for key, vals in _SORTED_BW_ITEMS:
         parts = key.rsplit("_", 1)
         if len(parts) == 2:
             sym = parts[0]
-            if instrument_id.upper().startswith(sym):
-                return vals["threshold"]
+            if iid.startswith(sym):
+                return key, vals
+    return None, None
+
+
+def get_bandwidth_threshold(instrument_id: str, kline_style: str = "") -> float:
+    """根据合约代码+K线周期返回查表法带宽阈值"""
+    _, vals = _find_bw_entry(instrument_id, kline_style)
+    if vals is not None:
+        return vals["threshold"]
     return 0.04  # 默认阈值
+
+
+def get_bandwidth_percentile(instrument_id: str, kline_style: str = "") -> str:
+    """返回该品种该周期使用的百分位标签"""
+    _, vals = _find_bw_entry(instrument_id, kline_style)
+    if vals is not None:
+        return vals.get("percentile", "P75")
+    return "P75"
 
 
 def calc_bbands(close_array, period=20, std_dev=2.0):

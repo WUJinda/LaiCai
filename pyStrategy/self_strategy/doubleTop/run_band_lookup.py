@@ -23,7 +23,7 @@ from _batch_backtest import (
     calc_bbands, Trade, calc_trade_pnl,
     get_multiplier, get_margin_rate,
     TOTAL_CAPITAL, MAX_PER_TRADE, MAX_TOTAL_EXPOSURE,
-    _BANDWIDTH_DATA,
+    _BANDWIDTH_DATA, get_bandwidth_threshold, get_bandwidth_percentile,
 )
 
 DESKTOP = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -136,7 +136,7 @@ def run_single_with_monitoring(df, params):
             monitoring[i] = False
 
         # WAITING_PULLBACK → 等价格回到中轨；条件消失则回 IDLE
-        if state == STATE_WAITING_PULLBACK:
+        elif state == STATE_WAITING_PULLBACK:
             if not conditions_met:
                 state = STATE_IDLE
                 monitoring[i] = False
@@ -234,7 +234,7 @@ def run_single_with_monitoring(df, params):
     return trades, bbands, monitoring, scan_events, threshold
 
 
-def run_period(period_name, breakout_threshold=0.01):
+def run_period(period_name):
     """跑一个周期的回测"""
     data_dir = DATA_DIRS[period_name]
     results = []
@@ -259,13 +259,12 @@ def run_period(period_name, breakout_threshold=0.01):
 
         vm = get_multiplier(instrument)
         mr = get_margin_rate(instrument)
-        bw_threshold = _lookup_threshold(instrument, period_name)
+        bw_threshold = get_bandwidth_threshold(instrument, period_name)
 
         params = {
             "bb_period": 20, "bb_std": 2.0,
             "volume_multiple": vm, "margin_rate": mr,
             "bandwidth_threshold": bw_threshold,
-            "breakout_threshold": breakout_threshold,
             "fee_rate": 0.0001,
             "left_peak_lookback": 30,
             "zone_lower": 0.99,
@@ -289,7 +288,7 @@ def run_period(period_name, breakout_threshold=0.01):
             "date_end": df["date"].iloc[-1].strftime("%Y-%m-%d"),
             "max_bandwidth": round(max_bw, 4),
             "bw_threshold": round(actual_threshold, 6),
-            "percentile_used": _get_percentile_label(instrument, period_name),
+            "percentile_used": get_bandwidth_percentile(instrument, period_name),
             "bw_above_pct": round(bw_above, 1),
             "monitoring_pct": round(monitoring_pct, 1),
             "volume_multiple": vm,
@@ -302,6 +301,8 @@ def run_period(period_name, breakout_threshold=0.01):
             "_df": df,
             "_scan_events": scan_events,
             "_trades_raw": trades,
+            "_zone_lower": params["zone_lower"],
+            "_zone_upper": params["zone_upper"],
         }
 
         if trade_details:
@@ -329,46 +330,6 @@ def run_period(period_name, breakout_threshold=0.01):
         results.append(result)
 
     return results
-
-
-def _lookup_threshold(instrument_id, kline_style):
-    """直接查表获取阈值（按品种代码长度降序，避免前缀冲突）"""
-    sorted_items = sorted(
-        _BANDWIDTH_DATA.items(),
-        key=lambda x: len(x[0].rsplit("_", 1)[0]),
-        reverse=True,
-    )
-    for key, vals in sorted_items:
-        parts = key.rsplit("_", 1)
-        if len(parts) == 2:
-            sym, period = parts
-            if instrument_id.upper().startswith(sym) and period == kline_style.upper():
-                return vals["threshold"]
-    return 0.04
-
-
-def _get_percentile_label(instrument_id, kline_style=""):
-    """返回该品种该周期使用的百分位标签（从 _BANDWIDTH_DATA 查表）"""
-    sorted_items = sorted(
-        _BANDWIDTH_DATA.items(),
-        key=lambda x: len(x[0].rsplit("_", 1)[0]),
-        reverse=True,
-    )
-    # 优先按品种+周期精确匹配
-    for key, vals in sorted_items:
-        parts = key.rsplit("_", 1)
-        if len(parts) == 2:
-            sym, period = parts
-            if instrument_id.upper().startswith(sym) and period == kline_style.upper():
-                return vals.get("percentile", "P75")
-    # 回退：只匹配品种
-    for key, vals in sorted_items:
-        parts = key.rsplit("_", 1)
-        if len(parts) == 2:
-            sym = parts[0]
-            if instrument_id.upper().startswith(sym):
-                return vals.get("percentile", "P75")
-    return "P75"
 
 
 # ============================================================
@@ -459,8 +420,8 @@ def plot_trade_chart(result, output_path):
     ax1.plot(x, lower_slice, "g--", linewidth=0.8, alpha=0.7, label="下轨")
 
     # --- 扫描窗口 + 左峰 + 入场区间 ---
-    zone_lo_mult = 0.99
-    zone_up_mult = 1.02
+    zone_lo_mult = result.get("_zone_lower", 0.99)
+    zone_up_mult = result.get("_zone_upper", 1.02)
 
     for j, (open_idx, close_idx, td, tr) in enumerate(trade_info):
         ox = open_idx - start_idx
@@ -628,8 +589,8 @@ def build_report(all_results):
     # 阈值表
     lines.append("## 一、各品种各周期带宽阈值")
     lines.append("")
-    lines.append("| 品种 | H2 | H4 | D1 | 用的百分位 |")
-    lines.append("|------|-----|-----|-----|-----------|")
+    lines.append("| 品种 | H2 | H4 | D1 | 百分位(H2/H4/D1) |")
+    lines.append("|------|-----|-----|-----|------------------|")
     for key in sorted(_BANDWIDTH_DATA.keys()):
         parts = key.rsplit("_", 1)
         if len(parts) != 2:
@@ -638,18 +599,17 @@ def build_report(all_results):
         if "_" in sym:
             continue
         # 每个品种只输出一行
-        vals = _BANDWIDTH_DATA[key]
-        # 找该品种所有周期
         h2_key = f"{sym}_H2"
-        h4_key = f"{sym}_H4"
-        d1_key = f"{sym}_D1"
         if h2_key != key:
             continue
         h2_v = _BANDWIDTH_DATA.get(h2_key, {}).get("threshold", 0)
-        h4_v = _BANDWIDTH_DATA.get(h4_key, {}).get("threshold", 0)
-        d1_v = _BANDWIDTH_DATA.get(d1_key, {}).get("threshold", 0)
-        pct = _BANDWIDTH_DATA.get(h2_key, {}).get("percentile", "P75")
-        lines.append(f"| {sym} | {h2_v:.4f} | {h4_v:.4f} | {d1_v:.4f} | {pct} |")
+        h4_v = _BANDWIDTH_DATA.get(f"{sym}_H4", {}).get("threshold", 0)
+        d1_v = _BANDWIDTH_DATA.get(f"{sym}_D1", {}).get("threshold", 0)
+        h2_pct = _BANDWIDTH_DATA.get(h2_key, {}).get("percentile", "P75")
+        h4_pct = _BANDWIDTH_DATA.get(f"{sym}_H4", {}).get("percentile", "P75")
+        d1_pct = _BANDWIDTH_DATA.get(f"{sym}_D1", {}).get("percentile", "P75")
+        pcts = f"{h2_pct}/{h4_pct}/{d1_pct}" if not (h2_pct == h4_pct == d1_pct) else h2_pct
+        lines.append(f"| {sym} | {h2_v:.4f} | {h4_v:.4f} | {d1_v:.4f} | {pcts} |")
     lines.append("")
 
     # 策略条件
@@ -731,7 +691,7 @@ def build_report(all_results):
             lines.append(f"### {inst} ({period_labels[pname]})")
             lines.append(f"- 数据: {r['date_start']} ~ {r['date_end']} ({r['records']}条)")
             lines.append(f"- 阈值: {r['bw_threshold']:.4f} ({r['percentile_used']})")
-            lines.append(f"- 监控占比: {r['monitoring_pct']:.1f}% 的K线处于监控状态")
+            lines.append(f"- 扫描占比: {r['monitoring_pct']:.1f}% 的K线处于扫描/持仓状态")
             lines.append(f"- 合约乘数: {r['volume_multiple']}, 保证金率: {r['margin_rate']*100:.0f}%")
             lines.append("")
             lines.append(f"![{inst} {pname} 过程图]({chart_filename})")
@@ -803,8 +763,6 @@ def build_report(all_results):
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    breakout_threshold = 0.01
-
     print("=" * 60)
     print("双顶查表法带宽阈值回测")
     print("  策略: 带宽达标 → 等价格回到中轨 → 回溯30根找左峰")
@@ -815,7 +773,7 @@ def main():
     all_results = {}
     for pname in ["H2", "H4", "D1"]:
         print(f"\n回测 {pname} ...", flush=True)
-        results = run_period(pname, breakout_threshold)
+        results = run_period(pname)
         traded = [r for r in results if r["trade_count"] > 0]
         total_pnl = sum(r.get("total_pnl", 0) for r in traded)
         total_trades = sum(r["trade_count"] for r in traded)
