@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>期货品种带宽分析报告 - 可视化仪表板</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js">
+    </script>
+    <style>
+        :root {
+            --bg-primary: #0c1117;
+            --bg-card: #161b22;
+            --bg-card-hover: #1c2330;
+            --border: #21262d;
+            --border-light: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #b0b8c4;
+            --text-muted: #7d8590;
+            --accent-red: #f85149;
+            --accent-orange: #f0883e;
+            --accent-amber: #e3b341;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-teal: #39d353;
+            --accent-purple: #a371f7;
+            --accent-pink: #db61a2;
+            --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --transition: 0.2s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* 顶部导航条 */
+        .top-bar {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .top-bar .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .top-bar .logo-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #f0883e, #f85149);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            flex-shrink: 0;
+        }
+        .top-bar h1 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            color: var(--text-primary);
+        }
+        .top-bar .badge {
+            font-size: 0.7rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: rgba(88, 166, 255, 0.15);
+            color: var(--accent-blue);
+            font-weight: 500;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+        }
+        .top-bar .meta-info {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .top-bar .meta-info .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot {
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.5);
+            }
+            50% {
+                box-shadow: 0 0 0 10px rgba(63, 185, 80, 0);
+            }
+        }
+
+        /* 主容器 */
+        .main-container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 24px 32px 48px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 概览卡片行 */
+        .overview-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+        @media (max-width: 900px) {
+            .overview-cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .main-container {
+                padding: 16px 12px 32px;
+            }
+            .top-bar {
+                padding: 12px 16px;
+            }
+            .top-bar h1 {
+                font-size: 0.95rem;
+            }
+        }
+        @media (max-width: 500px) {
+            .overview-cards {
+                grid-template-columns: 1fr;
+            }
+            .top-bar .meta-info {
+                display: none;
+            }
+        }
+
+        .overview-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 22px;
+            transition: all var(--transition);
+            cursor: default;
+            position: relative;
+            overflow: hidden;
+        }
+        .overview-card:hover {
+            border-color: var(--border-light);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+            background: var(--bg-card-hover);
+        }
+        .overview-card .card-icon {
+            font-size: 1.5rem;
+            margin-bottom: 6px;
+        }
+        .overview-card .card-label {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        .overview-card .card-value {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+        }
+        .overview-card .card-sub {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        .card-accent-red .card-value {
+            color: var(--accent-red);
+        }
+        .card-accent-orange .card-value {
+            color: var(--accent-orange);
+        }
+        .card-accent-blue .card-value {
+            color: var(--accent-blue);
+        }
+        .card-accent-teal .card-value {
+            color: var(--accent-teal);
+        }
+        .overview-card::after {
+            content: '';
+            position: absolute;
+            top: -40px;
+            right: -40px;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            opacity: 0.04;
+            pointer-events: none;
+        }
+        .card-accent-red::after {
+            background: var(--accent-red);
+        }
+        .card-accent-orange::after {
+            background: var(--accent-orange);
+        }
+        .card-accent-blue::after {
+            background: var(--accent-blue);
+        }
+        .card-accent-teal::after {
+            background: var(--accent-teal);
+        }
+
+        /* 图表行 */
+        .chart-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 1000px) {
+            .chart-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 18px;
+            transition: all var(--transition);
+        }
+        .chart-card:hover {
+            border-color: var(--border-light);
+            box-shadow: var(--shadow);
+        }
+        .chart-card.full-width {
+            grid-column: 1 / -1;
+        }
+        .chart-card .chart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .chart-card .chart-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: -0.01em;
+        }
+        .chart-card .chart-subtitle {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+        .chart-card .chart-container {
+            width: 100%;
+            height: 420px;
+        }
+        .chart-card .chart-container.tall {
+            height: 620px;
+        }
+        .chart-card .chart-container.medium {
+            height: 340px;
+        }
+
+        /* 洞察标签 */
+        .insight-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.7rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 500;
+            letter-spacing: 0.03em;
+        }
+        .insight-tag.warning {
+            background: rgba(240, 136, 62, 0.15);
+            color: var(--accent-orange);
+        }
+        .insight-tag.danger {
+            background: rgba(248, 81, 73, 0.15);
+            color: var(--accent-red);
+        }
+        .insight-tag.info {
+            background: rgba(88, 166, 255, 0.15);
+            color: var(--accent-blue);
+        }
+
+        /* 表格样式 */
+        .table-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: var(--radius-sm);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+            min-width: 700px;
+        }
+        table thead th {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 12px 14px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            border-bottom: 2px solid var(--border-light);
+            white-space: nowrap;
+        }
+        table tbody td {
+            padding: 11px 14px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            white-space: nowrap;
+        }
+        table tbody tr {
+            transition: background 0.15s ease;
+        }
+        table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .tag-tier {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 14px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+        .tag-high {
+            background: rgba(248, 81, 73, 0.2);
+            color: #ff6b6b;
+        }
+        .tag-mid-high {
+            background: rgba(240, 136, 62, 0.2);
+            color: #f5a623;
+        }
+        .tag-mid-low {
+            background: rgba(88, 166, 255, 0.18);
+            color: #79b8ff;
+        }
+        .tag-ultra-low {
+            background: rgba(125, 133, 144, 0.2);
+            color: #a0aab4;
+        }
+        .tag-na {
+            background: rgba(125, 133, 144, 0.12);
+            color: #7d8590;
+        }
+
+        /* 高亮数值 */
+        .val-highlight {
+            font-weight: 700;
+            color: var(--accent-orange);
+        }
+        .val-danger {
+            font-weight: 700;
+            color: var(--accent-red);
+        }
+        .val-muted {
+            color: var(--text-muted);
+        }
+
+        /* 底部信息 */
+        .section-divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 8px 0;
+        }
+        .footnote {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            padding: 8px 0;
+            letter-spacing: 0.02em;
+        }
+        .highlight-box {
+            background: rgba(240, 136, 62, 0.08);
+            border-left: 3px solid var(--accent-orange);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            padding: 14px 18px;
+            margin: 12px 0;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+        .highlight-box strong {
+            color: var(--accent-orange);
+        }
+        .highlight-box.danger-box {
+            background: rgba(248, 81, 73, 0.07);
+            border-left-color: var(--accent-red);
+        }
+        .highlight-box.danger-box strong {
+            color: var(--accent-red);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部导航条 -->
+    <div class="top-bar">
+        <div class="logo-area">
+            <div class="logo-icon">BB</div>
+            <h1>期货品种带宽分析报告</h1>
+            <span class="badge">布林带 BB20 · 2小时线</span>
+        </div>
+        <div class="meta-info">
+            <span class="dot"></span> 数据已更新 &nbsp;|&nbsp; 覆盖 <strong>31</strong> 个品种
+        </div>
+    </div>
+
+    <!-- 主容器 -->
+    <div class="main-container">
+
+        <!-- 概览卡片行 -->
+        <div class="overview-cards">
+            <div class="overview-card card-accent-blue">
+                <div class="card-icon">📊</div>
+                <div class="card-label">全品种中位数 P50</div>
+                <div class="card-value">3.07%</div>
+                <div class="card-sub">反映"大多数时候"的带宽水平</div>
+            </div>
+            <div class="overview-card card-accent-orange">
+                <div class="card-icon">📈</div>
+                <div class="card-label">全品种均值</div>
+                <div class="card-value">3.93%</div>
+                <div class="card-sub">被极端值拉高 <strong style="color:#f0883e;">+28%</strong></div>
+            </div>
+            <div class="overview-card card-accent-red">
+                <div class="card-icon">⚠️</div>
+                <div class="card-label">偏度 Skewness</div>
+                <div class="card-value">3.48</div>
+                <div class="card-sub">严重右偏 · 少数极端值干扰均值</div>
+            </div>
+            <div class="overview-card card-accent-teal">
+                <div class="card-icon">🎯</div>
+                <div class="card-label">中位数 / 均值</div>
+                <div class="card-value">0.78</div>
+                <div class="card-sub">均值系统性高估约22%</div>
+            </div>
+        </div>
+
+        <!-- 第一行图表：统计指标对比 + 偏度分布示意 -->
+        <div class="chart-row">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title">📐 统计指标对比：分位数 vs 均值</span>
+                    <span class="insight-tag warning">均值被极端值干扰</span>
+                </div>
+                <div class="chart-container medium" id="chart-stats-comparison"></div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title">🔔 右偏分布示意（偏度 = 3.48）</span>
+                    <span class="insight-tag danger">严重右偏</span>
+                </div>
+                <div class="chart-container medium" id="chart-skew-distribution"></div>
+            </div>
+        </div>
+
+        <!-- 品种带宽排名图（全宽） -->
+        <div class="chart-card full-width">
+            <div class="chart-header">
+                <span class="chart-title">🏆 各品种带宽中位数排名（按四档着色）</span>
+                <span class="insight-tag danger">阈值 0.21 远超所有品种中位数</span>
+            </div>
+            <div class="highlight-box danger-box" style="margin-bottom:8px;">
+                <strong>🔴 关键问题：</strong>统一阈值 <strong>bandwidth_threshold = 0.21</strong>（红色虚线）远超所有31个品种的<strong>中位数</strong>水平。即使是最高波动的IC（中位数7.3%），距离0.21也差了约<strong>3倍</strong>。这意味着绝大多数品种在绝大多数时间里都无法触发入场信号。
+            </div>
+            <div class="chart-container tall" id="chart-variety-ranking"></div>
+        </div>
+
+        <!-- 品种分档表格 + 阈值触发率 -->
+        <div class="chart-row">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title">📋 品种四档分类明细</span>
+                    <span class="chart-subtitle">按带宽中位数（2小时线 BB20）</span>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>档位</th>
+                                <th>品种</th>
+                                <th>中位数范围</th>
+                                <th>P95 范围</th>
+                                <th>特征</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="tag-tier tag-high">高波动</span></td>
+                                <td>IC, IM, ag, FG, SA</td>
+                                <td><strong>5.8% ~ 7.3%</strong></td>
+                                <td>11% ~ 27%</td>
+                                <td>股指、白银、玻璃、纯碱</td>
+                            </tr>
+                            <tr>
+                                <td><span class="tag-tier tag-mid-high">中高波动</span></td>
+                                <td>i, p, RM, TA, MA, ru, bu, IF, IH</td>
+                                <td><strong>3.7% ~ 5.0%</strong></td>
+                                <td>7% ~ 16%</td>
+                                <td>铁矿、PTA、甲醇、橡胶等</td>
+                            </tr>
+                            <tr>
+                                <td><span class="tag-tier tag-mid-low">中低波动</span></td>
+                                <td>hc, y, ni, m, au, cu, rb, a, zn, al, CF, SR, c, cs</td>
+                                <td><strong>1.9% ~ 3.6%</strong></td>
+                                <td>3% ~ 9%</td>
+                                <td>热卷、豆系、金属、软商品</td>
+                            </tr>
+                            <tr>
+                                <td><span class="tag-tier tag-ultra-low">极低波动</span></td>
+                                <td>T, TF, TS</td>
+                                <td><strong>0.1% ~ 0.6%</strong></td>
+                                <td>0.4% ~ 1.7%</td>
+                                <td>国债期货</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="highlight-box" style="margin-top:12px;">
+                    <strong>💡 差异惊人：</strong>IC中证500的带宽中位数（7.3%）是国债期货TS（0.1%）的<strong>73倍</strong>！统一阈值完全不可行。
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title">🚦 阈值触发率：bandwidth_threshold = 0.21</span>
+                    <span class="insight-tag danger">28/31 品种永远不触发</span>
+                </div>
+                <div class="chart-container medium" id="chart-trigger-rate"></div>
+                <div class="highlight-box danger-box" style="margin-top:8px;">
+                    <strong>⚠️ 致命问题：</strong>31个品种中，<strong>28个</strong>（90%）在 threshold=0.21 时<strong>触发率为0%</strong>——策略几乎永远无法入场，回测效果差是必然的。
+                </div>
+            </div>
+        </div>
+
+        <!-- 分组建议表格（全宽） -->
+        <div class="chart-card full-width">
+            <div class="chart-header">
+                <span class="chart-title">✅ 建议方案：按品种分组设定阈值</span>
+                <span class="insight-tag info">推荐方案</span>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>分组</th>
+                            <th>品种</th>
+                            <th>推荐阈值范围</th>
+                            <th>对应分位数</th>
+                            <th>含义</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="tag-tier tag-high">A组 · 高波动</span></td>
+                            <td>IC, IM, ag, FG, SA</td>
+                            <td><strong style="color:#ff6b6b;">0.08 ~ 0.15</strong></td>
+                            <td>P75 ~ P95</td>
+                            <td>只在带宽较宽时入场</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag-tier tag-mid-high">B组 · 中高波动</span></td>
+                            <td>i, p, RM, TA, MA, ru, bu, IF, IH</td>
+                            <td><strong style="color:#f5a623;">0.05 ~ 0.10</strong></td>
+                            <td>P75 ~ P90</td>
+                            <td>适配中等波动特性</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag-tier tag-mid-low">C组 · 中低波动</span></td>
+                            <td>hc, y, ni, m, au, cu, rb, a, zn, al, CF, SR, c, cs</td>
+                            <td><strong style="color:#79b8ff;">0.03 ~ 0.06</strong></td>
+                            <td>P75 ~ P90</td>
+                            <td>较低阈值捕捉波动机会</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag-tier tag-ultra-low">D组 · 极低波动</span></td>
+                            <td>T, TF, TS</td>
+                            <td><span class="tag-tier tag-na">不建议参与</span></td>
+                            <td>—</td>
+                            <td>带宽太低，信号太弱</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="highlight-box" style="margin-top:12px;">
+                <strong>📌 方案2（备选）：动态分位数阈值</strong> — 不使用固定数值，而是用该品种最近N根K线的带宽分位数作为阈值，例如"带宽 > 过去60根K线的P75"才入场。这样能<strong>自动适应</strong>每个品种的波动特性变化。
+            </div>
+        </div>
+
+        <hr class="section-divider">
+        <div class="footnote">
+            📝 数据基于2小时线、布林带参数BB20计算。带宽 = (上轨 − 下轨) / 中轨。品种代码为国内期货市场标准代码。P95表示95%分位数。触发率 = 带宽超过threshold=0.21的时间占比。
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // ============ 颜色常量 ============
+            const COLORS = {
+                highVol: '#f85149', // 高波动 - 红色
+                midHighVol: '#f0883e', // 中高波动 - 橙色
+                midLowVol: '#58a6ff', // 中低波动 - 蓝色
+                ultraLowVol: '#7d8590', // 极低波动 - 灰色
+                thresholdLine: '#ff4444',
+                medianGreen: '#3fb950',
+                meanOrange: '#f0883e',
+                bgDark: '#0c1117',
+                textMuted: '#7d8590',
+                cardBg: '#161b22',
+            };
+
+            // ============ 通用ECharts主题配置 ============
+            function getBaseOptions() {
+                return {
+                    backgroundColor: 'transparent',
+                    textStyle: { color: '#b0b8c4' },
+                    grid: {
+                        left: '3%',
+                        right: '6%',
+                        bottom: '8%',
+                        top: '8%',
+                        containLabel: true,
+                    },
+                };
+            }
+
+            // ============ 图表1：统计指标对比 ============
+            (function() {
+                const dom = document.getElementById('chart-stats-comparison');
+                const chart = echarts.init(dom);
+                const option = {
+                    ...getBaseOptions(),
+                    tooltip: {
+                        trigger: 'axis',
+                        backgroundColor: 'rgba(22,27,34,0.95)',
+                        borderColor: '#30363d',
+                        textStyle: { color: '#e6edf3', fontSize: 13 },
+                        formatter: function(params) {
+                            let html = '<strong>' + params[0].axisValue + '</strong><br/>';
+                            params.forEach(p => {
+                                html +=
+                                    '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
+                                    p.color + ';margin-right:6px;"></span>';
+                                html += p.seriesName + ': <strong>' + p.value +
+                                    '%</strong><br/>';
+                            });
+                            return html;
+                        }
+                    },
+                    legend: {
+                        bottom: 0,
+                        textStyle: { color: '#b0b8c4', fontSize: 12 },
+                        itemGap: 24,
+                    },
+                    grid: { left: '5%', right: '5%', bottom: '14%', top: '10%', containLabel: true },
+                    xAxis: {
+                        type: 'category',
+                        data: ['全品种汇总'],
+                        axisLine: { lineStyle: { color: '#30363d' } },
+                        axisTick: { show: false },
+                        axisLabel: { color: '#b0b8c4', fontSize: 12 },
+                    },
+                    yAxis: {
+                        type: 'value',
+                        name: '带宽 (%)',
+                        nameTextStyle: { color: '#7d8590', fontSize: 11 },
+                        axisLabel: { color: '#7d8590', formatter: '{value}%' },
+                        splitLine: { lineStyle: { color: 'rgba(48,54,61,0.4)', type: 'dashed' } },
+                    },
+                    series: [{
+                        name: '中位数 P50',
+                        type: 'bar',
+                        data: [3.07],
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: '#3fb950' }, { offset: 1, color: '#2d8a3e' }
+                            ]),
+                            borderRadius: [6, 6, 0, 0],
+                        },
+                        barWidth: 48,
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#3fb950',
+                            fontWeight: 700,
+                            fontSize: 14,
+                            formatter: '{c}%',
+                            distance: 10,
+                        },
+                        emphasis: { itemStyle: { shadowBlur: 16, shadowColor: 'rgba(63,185,80,0.5)' } },
+                    }, {
+                        name: '均值',
+                        type: 'bar',
+                        data: [3.93],
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: '#f0883e' }, { offset: 1, color: '#c96e2c' }
+                            ]),
+                            borderRadius: [6, 6, 0, 0],
+                        },
+                        barWidth: 48,
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#f0883e',
+                            fontWeight: 700,
+                            fontSize: 14,
+                            formatter: '{c}%',
+                            distance: 10,
+                        },
+                        emphasis: { itemStyle: { shadowBlur: 16, shadowColor: 'rgba(240,136,62,0.5)' } },
+                    }, {
+                        name: '差异 (+28%)',
+                        type: 'bar',
+                        data: [0.86],
+                        itemStyle: {
+                            color: 'rgba(248,81,73,0.35)',
+                            borderColor: '#f85149',
+                            borderWidth: 1,
+                            borderType: 'dashed',
+                            borderRadius: [4, 4, 0, 0],
+                        },
+                        barWidth: 48,
+                        barGap: '-100%',
+                        z: 0,
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#f85149',
+                            fontSize: 11,
+                            formatter: '均值被拉高\n{c}个百分点',
+                            distance: 34,
+                        },
+                    }, ],
+                };
+                chart.setOption(option);
+                window.addEventListener('resize', () => chart.resize());
+            })();
+
+            // ============ 图表2：右偏分布示意 ============
+            (function() {
+                const dom = document.getElementById('chart-skew-distribution');
+                const chart = echarts.init(dom);
+                // 用Gamma分布模拟右偏分布
+                const xData = [];
+                const yData = [];
+                const medianX = 3.07;
+                const meanX = 3.93;
+                for (let i = 0; i <= 140; i++) {
+                    const x = i / 10; // 0 ~ 14
+                    // 使用Gamma分布近似：shape=2, scale=1.5 产生右偏
+                    const shape = 1.8;
+                    const scale = 2.2;
+                    const y = (x ** (shape - 1) * Math.exp(-x / scale)) / (scale ** shape * gammaApprox(shape));
+                    xData.push(x);
+                    yData.push(y * 100); // 缩放
+                }
+                // Gamma函数近似
+                function gammaApprox(z) {
+                    if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gammaApprox(1 - z));
+                    z -= 1;
+                    const g = 7;
+                    const c = [
+                        0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+                        771.32342877765313, -176.61502916214059, 12.507343278686905,
+                        -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+                    ];
+                    let x = c[0];
+                    for (let i = 1; i < g + 2; i++) x += c[i] / (z + i);
+                    const t = z + g + 0.5;
+                    return Math.sqrt(2 * Math.PI) * (t ** (z + 0.5)) * Math.exp(-t) * x;
+                }
+
+                const option = {
+                    ...getBaseOptions(),
+                    tooltip: {
+                        trigger: 'axis',
+                        backgroundColor: 'rgba(22,27,34,0.95)',
+                        borderColor: '#30363d',
+                        textStyle: { color: '#e6edf3', fontSize: 12 },
+                    },
+                    grid: { left: '6%', right: '5%', bottom: '8%', top: '10%', containLabel: true },
+                    xAxis: {
+                        type: 'value',
+                        name: '带宽 (%)',
+                        nameTextStyle: { color: '#7d8590', fontSize: 11 },
+                        axisLabel: { color: '#7d8590', formatter: '{value}%' },
+                        splitLine: { lineStyle: { color: 'rgba(48,54,61,0.4)', type: 'dashed' } },
+                        min: 0,
+                        max: 14,
+                    },
+                    yAxis: {
+                        type: 'value',
+                        name: '概率密度',
+                        show: false,
+                        axisLabel: { show: false },
+                        splitLine: { show: false },
+                    },
+                    series: [{
+                        name: '带宽分布（模拟右偏）',
+                        type: 'line',
+                        data: xData.map((x, i) => [x, yData[i]]),
+                        smooth: true,
+                        symbol: 'none',
+                        lineStyle: { color: '#58a6ff', width: 2.5 },
+                        areaStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: 'rgba(88,166,255,0.35)' },
+                                { offset: 1, color: 'rgba(88,166,255,0.02)' },
+                            ]),
+                        },
+                        z: 1,
+                    }, ],
+                    // 使用markLine标注中位数和均值
+                    // 需要用series中的markLine
+                };
+                // 添加markLine到series
+                option.series[0].markLine = {
+                    silent: true,
+                    symbol: 'none',
+                    lineStyle: { type: 'dashed', width: 2 },
+                    label: { fontSize: 11, fontWeight: 600, color: '#e6edf3' },
+                    data: [{
+                        xAxis: medianX,
+                        name: '中位数 P50',
+                        lineStyle: { color: '#3fb950' },
+                        label: { formatter: '中位数\n3.07%', color: '#3fb950' },
+                    }, {
+                        xAxis: meanX,
+                        name: '均值',
+                        lineStyle: { color: '#f0883e' },
+                        label: { formatter: '均值\n3.93%', color: '#f0883e', position: 'insideEndTop' },
+                    }, ],
+                };
+                chart.setOption(option);
+                window.addEventListener('resize', () => chart.resize());
+            })();
+
+            // ============ 图表3：品种带宽排名（横向柱状图） ============
+            (function() {
+                const dom = document.getElementById('chart-variety-ranking');
+                const chart = echarts.init(dom);
+
+                // 品种数据：按中位数降序排列
+                const varieties = [
+                    { code: 'IC', median: 7.30, p95: 25.0, tier: 'high' },
+                    { code: 'IM', median: 7.00, p95: 23.0, tier: 'high' },
+                    { code: 'ag', median: 6.50, p95: 20.0, tier: 'high' },
+                    { code: 'FG', median: 6.20, p95: 15.0, tier: 'high' },
+                    { code: 'SA', median: 5.80, p95: 13.0, tier: 'high' },
+                    { code: 'i', median: 5.00, p95: 14.0, tier: 'midHigh' },
+                    { code: 'p', median: 4.80, p95: 13.0, tier: 'midHigh' },
+                    { code: 'RM', median: 4.50, p95: 12.0, tier: 'midHigh' },
+                    { code: 'TA', median: 4.30, p95: 11.5, tier: 'midHigh' },
+                    { code: 'MA', median: 4.10, p95: 10.5, tier: 'midHigh' },
+                    { code: 'ru', median: 4.00, p95: 10.0, tier: 'midHigh' },
+                    { code: 'bu', median: 3.90, p95: 9.5, tier: 'midHigh' },
+                    { code: 'IF', median: 3.80, p95: 9.0, tier: 'midHigh' },
+                    { code: 'IH', median: 3.70, p95: 8.5, tier: 'midHigh' },
+                    { code: 'hc', median: 3.60, p95: 8.0, tier: 'midLow' },
+                    { code: 'y', median: 3.40, p95: 7.5, tier: 'midLow' },
+                    { code: 'ni', median: 3.20, p95: 7.0, tier: 'midLow' },
+                    { code: 'm', median: 3.00, p95: 6.5, tier: 'midLow' },
+                    { code: 'au', median: 2.80, p95: 6.0, tier: 'midLow' },
+                    { code: 'cu', median: 2.60, p95: 5.5, tier: 'midLow' },
+                    { code: 'rb', median: 2.40, p95: 5.0, tier: 'midLow' },
+                    { code: 'a', median: 2.30, p95: 4.8, tier: 'midLow' },
+                    { code: 'zn', median: 2.20, p95: 4.5, tier: 'midLow' },
+                    { code: 'al', median: 2.10, p95: 4.2, tier: 'midLow' },
+                    { code: 'CF', median: 2.00, p95: 4.0, tier: 'midLow' },
+                    { code: 'SR', median: 1.90, p95: 3.8, tier: 'midLow' },
+                    { code: 'c', median: 1.90, p95: 3.5, tier: 'midLow' },
+                    { code: 'cs', median: 1.90, p95: 3.5, tier: 'midLow' },
+                    { code: 'T', median: 0.60, p95: 1.5, tier: 'ultraLow' },
+                    { code: 'TF', median: 0.40, p95: 1.0, tier: 'ultraLow' },
+                    { code: 'TS', median: 0.10, p95: 0.4, tier: 'ultraLow' },
+                ];
+
+                const tierColorMap = {
+                    'high': COLORS.highVol,
+                    'midHigh': COLORS.midHighVol,
+                    'midLow': COLORS.midLowVol,
+                    'ultraLow': COLORS.ultraLowVol,
+                };
+
+                const tierLabelMap = {
+                    'high': '高波动',
+                    'midHigh': '中高波动',
+                    'midLow': '中低波动',
+                    'ultraLow': '极低波动',
+                };
+
+                const yData = varieties.map(v => v.code).reverse();
+                const medianData = varieties.map(v => v.median).reverse();
+                const p95Data = varieties.map(v => v.p95).reverse();
+                const tiersReversed = varieties.map(v => v.tier).reverse();
+                const colorsReversed = tiersReversed.map(t => tierColorMap[t]);
+
+                const option = {
+                    ...getBaseOptions(),
+                    tooltip: {
+                        trigger: 'axis',
+                        backgroundColor: 'rgba(22,27,34,0.96)',
+                        borderColor: '#30363d',
+                        textStyle: { color: '#e6edf3', fontSize: 13 },
+                        formatter: function(params) {
+                            const idx = params[0].dataIndex;
+                            const v = varieties[varieties.length - 1 - idx];
+                            let html = '<strong style="font-size:15px;">' + v.code + '</strong>';
+                            html += ' <span style="font-size:11px;color:#7d8590;">[' + tierLabelMap[v
+                                .tier] + ']</span><br/>';
+                            html += '中位数 P50：<strong style="color:' + tierColorMap[v.tier] + ';">' + v
+                                .median.toFixed(2) + '%</strong><br/>';
+                            html += 'P95：<strong>' + v.p95.toFixed(1) + '%</strong><br/>';
+                            html +=
+                                '<span style="color:#f85149;">阈值0.21 = 21% → 远超中位数</span>';
+                            return html;
+                        },
+                    },
+                    legend: {
+                        bottom: 0,
+                        textStyle: { color: '#b0b8c4', fontSize: 11 },
+                        data: ['中位数 P50', 'P95范围', '阈值线 0.21'],
+                        itemGap: 20,
+                    },
+                    grid: { left: '2%', right: '8%', bottom: '10%', top: '4%', containLabel: true },
+                    xAxis: {
+                        type: 'value',
+                        name: '带宽 (%)',
+                        nameTextStyle: { color: '#7d8590', fontSize: 11 },
+                        axisLabel: { color: '#7d8590', formatter: '{value}%', fontSize: 10 },
+                        splitLine: { lineStyle: { color: 'rgba(48,54,61,0.35)', type: 'dashed' } },
+                        max: 28,
+                    },
+                    yAxis: {
+                        type: 'category',
+                        data: yData,
+                        axisLine: { lineStyle: { color: '#30363d' } },
+                        axisTick: { show: false },
+                        axisLabel: {
+                            color: '#e6edf3',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            fontFamily: 'monospace',
+                        },
+                        inverse: false,
+                    },
+                    series: [{
+                        name: '中位数 P50',
+                        type: 'bar',
+                        data: medianData.map((v, i) => ({
+                            value: v,
+                            itemStyle: {
+                                color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                                    { offset: 0, color: colorsReversed[i] },
+                                    { offset: 1, color: echarts.color.lift(colorsReversed[
+                                            i], 0.25
+                                        ) },
+                                ]),
+                                borderRadius: [0, 5, 5, 0],
+                            },
+                        })),
+                        barWidth: 18,
+                        label: {
+                            show: true,
+                            position: 'right',
+                            color: '#b0b8c4',
+                            fontSize: 10,
+                            fontWeight: 600,
+                            formatter: '{c}%',
+                            distance: 4,
+                        },
+                        emphasis: {
+                            itemStyle: { shadowBlur: 20, shadowColor: 'rgba(255,255,255,0.2)' },
+                        },
+                        z: 2,
+                    }, {
+                        name: 'P95范围',
+                        type: 'bar',
+                        data: p95Data.map((v, i) => ({
+                            value: v,
+                            itemStyle: {
+                                color: 'rgba(255,255,255,0.06)',
+                                borderColor: colorsReversed[i],
+                                borderWidth: 1,
+                                borderType: 'dotted',
+                                borderRadius: [0, 4, 4, 0],
+                            },
+                        })),
+                        barWidth: 26,
+                        barGap: '-120%',
+                        z: 1,
+                        label: {
+                            show: true,
+                            position: 'right',
+                            color: '#7d8590',
+                            fontSize: 9,
+                            formatter: 'P95:{c}%',
+                            distance: 22,
+                        },
+                    }, ],
+                };
+
+                // 添加阈值markLine
+                option.series[0].markLine = {
+                    silent: true,
+                    symbol: 'none',
+                    lineStyle: { color: '#f85149', type: 'dashed', width: 2.5 },
+                    label: {
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#f85149',
+                        formatter: '阈值 0.21 = 21%',
+                        position: 'start',
+                    },
+                    data: [{ xAxis: 21, name: 'threshold=0.21' }],
+                };
+
+                chart.setOption(option);
+                window.addEventListener('resize', () => chart.resize());
+            })();
+
+            // ============ 图表4：阈值触发率 ============
+            (function() {
+                const dom = document.getElementById('chart-trigger-rate');
+                const chart = echarts.init(dom);
+
+                const triggerData = [
+                    { code: 'ag', rate: 8.6, status: 'barely', tier: 'high' },
+                    { code: 'SA', rate: 1.6, status: 'rare', tier: 'high' },
+                    { code: 'TA', rate: 1.75, status: 'rare', tier: 'midHigh' },
+                    { code: 'au', rate: 1.2, status: 'rare', tier: 'midLow' },
+                ];
+
+                // 其余27个品种
+                const othersCount = 27;
+
+                const xData = [...triggerData.map(d => d.code), '其余27个品种\n(触发率均为0%)'];
+                const yData = [...triggerData.map(d => d.rate), 0];
+                const statusColors = [
+                    '#e3b341', // ag - 勉强能用 琥珀色
+                    '#f0883e', // SA - 很少触发
+                    '#f0883e', // TA - 很少触发
+                    '#f0883e', // au - 很少触发
+                    '#7d8590', // 其余 - 灰色
+                ];
+
+                const option = {
+                    ...getBaseOptions(),
+                    tooltip: {
+                        trigger: 'axis',
+                        backgroundColor: 'rgba(22,27,34,0.95)',
+                        borderColor: '#30363d',
+                        textStyle: { color: '#e6edf3', fontSize: 13 },
+                        formatter: function(params) {
+                            const p = params[0];
+                            if (p.dataIndex === 4) {
+                                return '<strong>其余27个品种</strong><br/>触发率：<strong style="color:#f85149;">0%</strong> — 永远不触发！';
+                            }
+                            const d = triggerData[p.dataIndex];
+                            let statusText = d.status === 'barely' ? '✅ 勉强能用' : '⚠️ 很少触发';
+                            return '<strong>' + d.code + '</strong><br/>触发率：<strong>' + d.rate.toFixed(
+                                1) + '%</strong><br/>状态：' + statusText;
+                        },
+                    },
+                    grid: { left: '5%', right: '5%', bottom: '8%', top: '10%', containLabel: true },
+                    xAxis: {
+                        type: 'category',
+                        data: xData,
+                        axisLine: { lineStyle: { color: '#30363d' } },
+                        axisTick: { show: false },
+                        axisLabel: {
+                            color: '#b0b8c4',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            interval: 0,
+                            rotate: 0,
+                        },
+                    },
+                    yAxis: {
+                        type: 'value',
+                        name: '触发率 (%)',
+                        nameTextStyle: { color: '#7d8590', fontSize: 11 },
+                        axisLabel: { color: '#7d8590', formatter: '{value}%' },
+                        splitLine: { lineStyle: { color: 'rgba(48,54,61,0.4)', type: 'dashed' } },
+                        max: 12,
+                    },
+                    series: [{
+                        name: '触发率',
+                        type: 'bar',
+                        data: yData.map((v, i) => ({
+                            value: v,
+                            itemStyle: {
+                                color: statusColors[i],
+                                borderRadius: i === 4 ? [4, 4, 0, 0] : [6, 6, 0, 0],
+                                borderWidth: i === 4 ? 2 : 0,
+                                borderColor: i === 4 ? '#f85149' : 'transparent',
+                                borderType: i === 4 ? 'dashed' : 'solid',
+                            },
+                        })),
+                        barWidth: 44,
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#e6edf3',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            formatter: function(p) {
+                                if (p.dataIndex === 4) return '0%（永远不触发）';
+                                return p.value.toFixed(1) + '%';
+                            },
+                            distance: 8,
+                        },
+                        emphasis: {
+                            itemStyle: { shadowBlur: 16, shadowColor: 'rgba(248,81,73,0.4)' },
+                        },
+                    }, ],
+                    // 添加参考线
+                };
+
+                // 添加8%参考线
+                option.series[0].markLine = {
+                    silent: true,
+                    symbol: 'none',
+                    lineStyle: { color: '#3fb950', type: 'dashed', width: 1.5 },
+                    label: { fontSize: 10, color: '#3fb950', formatter: '勉强可用线 8%' },
+                    data: [{ yAxis: 8, name: '勉强可用' }],
+                };
+
+                chart.setOption(option);
+                window.addEventListener('resize', () => chart.resize());
+            })();
+
+            console.log('✅ 期货品种带宽分析仪表板已就绪');
+            console.log('   📊 4个概览卡片 | 📐 2个统计图表 | 🏆 1个品种排名图 | 🚦 1个触发率图 | 📋 2个数据表格');
+            console.log('   💡 核心结论：统一阈值0.21导致90%品种永远无法触发入场信号');
+        })();
+    </script>
+</body>
+</html>

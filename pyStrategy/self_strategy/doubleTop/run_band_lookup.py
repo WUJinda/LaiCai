@@ -24,6 +24,7 @@ from _batch_backtest import (
     get_multiplier, get_margin_rate,
     TOTAL_CAPITAL, MAX_PER_TRADE, MAX_TOTAL_EXPOSURE,
     _BANDWIDTH_DATA, get_bandwidth_threshold, get_bandwidth_percentile,
+    is_instrument_excluded,
 )
 
 DESKTOP = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -252,6 +253,10 @@ def run_period(period_name):
 
         instrument = raw.get("instrument", fname.replace("_kline.json", ""))
         exchange = raw.get("exchange", "?")
+
+        # 跳过排除品种（如国债期货）
+        if is_instrument_excluded(instrument):
+            continue
 
         df = pd.DataFrame(records)
         df["date"] = pd.to_datetime(df["date"])

@@ -66,14 +66,31 @@ def get_margin_rate(instrument_id: str) -> float:
 # 按品种×周期分别选百分位（P75/P80/P85/P90）
 # 规则：CV<0.55且偏度<1.5→P75，CV≥0.55或偏度≥1.5→P80，
 #        CV≥0.70或偏度≥2.5→P85，CV≥0.75且偏度≥2.0→P90
-# 排除：IC/IM/IF/IH（H4=D1数据重复）、T/TF/TS（国债带宽过小）
+# 排除：IC/IM/IF/IH（H4=D1数据重复）、T/TF/TS（国债带宽过小，不适合双顶策略）
 # P80/P85 由 P75↔P90 线性插值
 # ============================================================
 
+# 排除的品种（国债期货：带宽过小，不适合双顶策略）
+EXCLUDED_INSTRUMENTS = {"T", "TF", "TS"}
+
+
+def is_instrument_excluded(instrument_id: str) -> bool:
+    """判断品种是否被排除（如国债期货）"""
+    iid = instrument_id.upper()
+    for prefix in sorted(EXCLUDED_INSTRUMENTS, key=len, reverse=True):
+        if iid.startswith(prefix):
+            rest = iid[len(prefix):]
+            if not rest or rest[0].isdigit():
+                return True
+    return False
+
+
 # 每品种每周期 → 使用的百分位（全大写）
 _INSTRUMENT_PERCENTILE = {
-    # --- ag 异形波动组 ---
+    # --- 异形波动组 (AG/AU/BU)：波动特征异常，使用更高百分位 ---
     "AG_H2": "P85", "AG_H4": "P85", "AG_D1": "P75",
+    "AU_H2": "P90", "AU_H4": "P90", "AU_D1": "P90",
+    "BU_H2": "P90", "BU_H4": "P90", "BU_D1": "P90",
     # --- 正常组 ---
     "CF_H2": "P80", "CF_H4": "P75", "CF_D1": "P75",
     "FG_H2": "P80", "FG_H4": "P75", "FG_D1": "P75",
@@ -84,8 +101,6 @@ _INSTRUMENT_PERCENTILE = {
     "TA_H2": "P90", "TA_H4": "P85", "TA_D1": "P85",
     "A_H2":  "P75", "A_H4":  "P75", "A_D1":  "P75",
     "AL_H2": "P80", "AL_H4": "P85", "AL_D1": "P80",
-    "AU_H2": "P75", "AU_H4": "P85", "AU_D1": "P80",
-    "BU_H2": "P85", "BU_H4": "P85", "BU_D1": "P90",
     "C_H2":  "P75", "C_H4":  "P75", "C_D1":  "P80",
     "CS_H2": "P75", "CS_H4": "P75", "CS_D1": "P75",
     "CU_H2": "P90", "CU_H4": "P80", "CU_D1": "P80",

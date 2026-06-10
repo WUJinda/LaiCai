@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>期货品种带宽百分位推荐表 · 可视化仪表板</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js">
+    </script>
+    <style>
+        :root {
+            --bg-primary: #0c1117;
+            --bg-card: #161b22;
+            --border: #21262d;
+            --border-light: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #b0b8c4;
+            --text-muted: #7d8590;
+            --accent-red: #f85149;
+            --accent-orange: #f0883e;
+            --accent-amber: #e3b341;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-teal: #39d353;
+            --accent-purple: #a371f7;
+            --accent-pink: #db61a2;
+            --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        .top-bar {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+        }
+        .top-bar h1 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .top-bar .badge {
+            background: rgba(88, 166, 255, 0.15);
+            color: var(--accent-blue);
+            font-size: 0.7rem;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px 28px 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            transition: 0.2s;
+        }
+        .card:hover {
+            border-color: var(--border-light);
+            box-shadow: var(--shadow);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-title {
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+        .card-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .rule-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+        }
+        @media (max-width: 900px) {
+            .rule-cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        @media (max-width: 500px) {
+            .rule-cards {
+                grid-template-columns: 1fr;
+            }
+        }
+        .rule-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+        }
+        .rule-card .tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 14px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .tag-p75 {
+            background: rgba(63, 185, 80, 0.2);
+            color: #6be07b;
+        }
+        .tag-p80 {
+            background: rgba(88, 166, 255, 0.2);
+            color: #79b8ff;
+        }
+        .tag-p85 {
+            background: rgba(240, 136, 62, 0.2);
+            color: #f5a623;
+        }
+        .tag-p90 {
+            background: rgba(248, 81, 73, 0.2);
+            color: #ff6b6b;
+        }
+        .rule-card .desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: var(--radius-sm);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            min-width: 700px;
+            white-space: nowrap;
+        }
+        th {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            border-bottom: 2px solid var(--border-light);
+        }
+        td {
+            padding: 9px 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .highlight-threshold {
+            font-weight: 700;
+            color: var(--accent-orange);
+        }
+        .period-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.06);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-family: monospace;
+        }
+
+        .chart-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 950px) {
+            .chart-row {
+                grid-template-columns: 1fr;
+            }
+        }
+        .chart-box {
+            width: 100%;
+            height: 400px;
+        }
+        .chart-box.tall {
+            height: 550px;
+        }
+
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .stats-badge {
+            font-size: 0.75rem;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 4px 12px;
+            border-radius: 16px;
+            color: var(--text-secondary);
+        }
+        hr {
+            border-color: var(--border);
+            margin: 8px 0;
+        }
+        .footnote {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <h1>
+            📊 期货品种带宽百分位推荐表
+            <span class="badge">双顶策略 · 查表法阈值</span>
+        </h1>
+        <div class="card-subtitle">生成日期：2026-06-10 | 排除IC/IM/IF/IH(数据重复) & 国债</div>
+    </div>
+
+    <div class="main-container">
+        <!-- 规则卡片 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📋 分位数选择规则</span>
+                <span class="stats-badge">基于 CV（变异系数）与 偏度</span>
+            </div>
+            <div class="rule-cards">
+                <div class="rule-card">
+                    <span class="tag tag-p75">P75</span>
+                    <div class="desc">CV &lt; 0.55 且 偏度 &lt; 1.5<br>分布集中、对称，触发率~25%</div>
+                </div>
+                <div class="rule-card">
+                    <span class="tag tag-p80">P80</span>
+                    <div class="desc">CV ≥ 0.55 或 偏度 ≥ 1.5<br>轻微宽尾，需要收紧一点</div>
+                </div>
+                <div class="rule-card">
+                    <span class="tag tag-p85">P85</span>
+                    <div class="desc">CV ≥ 0.70 或 偏度 ≥ 2.5<br>明显宽尾，避免极端值误触发</div>
+                </div>
+                <div class="rule-card">
+                    <span class="tag tag-p90">P90</span>
+                    <div class="desc">CV ≥ 0.75 且 偏度 ≥ 2.0<br>严重宽尾，极度保守</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ag 异形波动组 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">⭐ ag 异形波动组（单独处理）</span>
+                <span class="card-subtitle">白银特殊：H2/H4 右偏严重用P85，D1分布对称但阈值极高</span>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr><th>周期</th><th>CV</th><th>偏度</th><th>建议分位</th><th>阈值</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><span class="period-badge">H2</span></td><td>0.90</td><td>2.36</td><td><span class="tag tag-p85">P85</span></td><td class="highlight-threshold">0.1618</td></tr>
+                        <tr><td><span class="period-badge">H4</span></td><td>0.86</td><td>2.06</td><td><span class="tag tag-p85">P85</span></td><td class="highlight-threshold">0.2252</td></tr>
+                        <tr><td><span class="period-badge">D1</span></td><td>0.68</td><td>0.66</td><td><span class="tag tag-p75">P75</span></td><td class="highlight-threshold">0.3984</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="footnote">💡 ag D1 中位数已达 20.73%，P75=39.84% 触发率极低，仅适合极端大波动行情。</div>
+        </div>
+
+        <!-- 正常组表格（按分位分组） -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">✅ 正常组（23个品种，69个品种×周期）</span>
+                <span class="card-subtitle">点击标签切换查看不同分位组</span>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;" id="tab-buttons">
+                <button class="tab-btn active" data-tier="p75" style="background:rgba(63,185,80,0.2); color:#6be07b; border:1px solid #3fb950; padding:6px 14px; border-radius:20px; cursor:pointer; font-weight:600;">P75 (39组)</button>
+                <button class="tab-btn" data-tier="p80" style="background:transparent; color:#79b8ff; border:1px solid #58a6ff; padding:6px 14px; border-radius:20px; cursor:pointer;">P80 (14组)</button>
+                <button class="tab-btn" data-tier="p85" style="background:transparent; color:#f5a623; border:1px solid #f0883e; padding:6px 14px; border-radius:20px; cursor:pointer;">P85 (13组)</button>
+                <button class="tab-btn" data-tier="p90" style="background:transparent; color:#ff6b6b; border:1px solid #f85149; padding:6px 14px; border-radius:20px; cursor:pointer;">P90 (3组)</button>
+            </div>
+            <div class="table-wrapper" id="tier-table-container">
+                <!-- 动态填充表格 -->
+            </div>
+        </div>
+
+        <!-- 统计图表行 -->
+        <div class="chart-row">
+            <div class="card">
+                <div class="card-header"><span class="card-title">📊 分位数使用占比</span></div>
+                <div class="chart-box" id="chart-pie"></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title">🔬 CV vs 偏度 散点图（按推荐分位着色）</span></div>
+                <div class="chart-box" id="chart-scatter"></div>
+            </div>
+        </div>
+
+        <!-- 阈值热力图（品种×周期） -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">🗺️ 阈值热力图（品种 × 周期）</span>
+                <span class="card-subtitle">颜色越深阈值越高，点击查看详情</span>
+            </div>
+            <div class="chart-box tall" id="chart-heatmap"></div>
+        </div>
+
+        <!-- 完整速查表（文本复制用） -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📋 完整阈值速查表（复制用）</span>
+                <button id="copy-btn" style="background:var(--border-light); color:var(--text-primary); border:none; padding:6px 16px; border-radius:6px; cursor:pointer;">📋 复制到剪贴板</button>
+            </div>
+            <pre id="cheatsheet-text" style="background:#0d1117; padding:16px; border-radius:8px; font-size:0.75rem; color:#c9d1d9; overflow-x:auto; white-space:pre-wrap;"></pre>
+        </div>
+
+        <div class="footnote">
+            📝 数据基于双顶策略布林带带宽（2小时/4小时/日线）。阈值 = 对应分位数的带宽值。P80/P85 由 P75 与 P90 线性插值计算。排除品种因数据问题或波动过小已标注。
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // ---------- 数据定义 ----------
+            // ag 特殊组
+            const agData = [
+                { variety: 'ag', period: 'H2', cv: 0.90, skew: 2.36, tier: 'P85', threshold: 0.1618 },
+                { variety: 'ag', period: 'H4', cv: 0.86, skew: 2.06, tier: 'P85', threshold: 0.2252 },
+                { variety: 'ag', period: 'D1', cv: 0.68, skew: 0.66, tier: 'P75', threshold: 0.3984 },
+            ];
+
+            // 正常组完整数据 (去除了报告中的重复行)
+            const normalData = [
+                // P75 组 (39条)
+                { variety: 'CF', period: 'H4', cv: 0.53, skew: 0.96, tier: 'P75', threshold: 0.0377 },
+                { variety: 'CF', period: 'D1', cv: 0.53, skew: 0.87, tier: 'P75', threshold: 0.0645 },
+                { variety: 'FG', period: 'H4', cv: 0.39, skew: 0.22, tier: 'P75', threshold: 0.0936 },
+                { variety: 'FG', period: 'D1', cv: 0.32, skew: 0.29, tier: 'P75', threshold: 0.1366 },
+                { variety: 'RM', period: 'H2', cv: 0.52, skew: 1.33, tier: 'P75', threshold: 0.0701 },
+                { variety: 'RM', period: 'H4', cv: 0.49, skew: 0.97, tier: 'P75', threshold: 0.0477 },
+                { variety: 'RM', period: 'D1', cv: 0.38, skew: 0.60, tier: 'P75', threshold: 0.0757 },
+                { variety: 'SA', period: 'H4', cv: 0.41, skew: 0.73, tier: 'P75', threshold: 0.0723 },
+                { variety: 'SA', period: 'D1', cv: 0.32, skew: 0.19, tier: 'P75', threshold: 0.1072 },
+                { variety: 'SR', period: 'H2', cv: 0.43, skew: 1.05, tier: 'P75', threshold: 0.0305 },
+                { variety: 'SR', period: 'H4', cv: 0.47, skew: 0.51, tier: 'P75', threshold: 0.0319 },
+                { variety: 'SR', period: 'D1', cv: 0.36, skew: -0.02, tier: 'P75', threshold: 0.0489 },
+                { variety: 'a', period: 'H2', cv: 0.53, skew: 0.62, tier: 'P75', threshold: 0.0416 },
+                { variety: 'a', period: 'H4', cv: 0.55, skew: 0.88, tier: 'P75', threshold: 0.0574 },
+                { variety: 'a', period: 'D1', cv: 0.48, skew: 0.08, tier: 'P75', threshold: 0.0910 },
+                { variety: 'au', period: 'H2', cv: 0.54, skew: 1.17, tier: 'P75', threshold: 0.0368 },
+                { variety: 'c', period: 'H2', cv: 0.44, skew: 1.07, tier: 'P75', threshold: 0.0264 },
+                { variety: 'c', period: 'H4', cv: 0.49, skew: 1.01, tier: 'P75', threshold: 0.0233 },
+                { variety: 'cs', period: 'H2', cv: 0.38, skew: 0.42, tier: 'P75', threshold: 0.0263 },
+                { variety: 'cs', period: 'H4', cv: 0.41, skew: 1.19, tier: 'P75', threshold: 0.0255 },
+                { variety: 'cs', period: 'D1', cv: 0.43, skew: 1.32, tier: 'P75', threshold: 0.0363 },
+                { variety: 'hc', period: 'H4', cv: 0.41, skew: 0.86, tier: 'P75', threshold: 0.0304 },
+                { variety: 'hc', period: 'D1', cv: 0.25, skew: 0.34, tier: 'P75', threshold: 0.0388 },
+                { variety: 'i', period: 'H4', cv: 0.31, skew: 0.25, tier: 'P75', threshold: 0.0612 },
+                { variety: 'i', period: 'D1', cv: 0.24, skew: 0.71, tier: 'P75', threshold: 0.0810 },
+                { variety: 'm', period: 'H2', cv: 0.53, skew: 1.36, tier: 'P75', threshold: 0.0508 },
+                { variety: 'm', period: 'H4', cv: 0.51, skew: 1.36, tier: 'P75', threshold: 0.0344 },
+                { variety: 'm', period: 'D1', cv: 0.48, skew: 0.91, tier: 'P75', threshold: 0.0493 },
+                { variety: 'p', period: 'H2', cv: 0.42, skew: 0.83, tier: 'P75', threshold: 0.0652 },
+                { variety: 'p', period: 'H4', cv: 0.46, skew: 1.17, tier: 'P75', threshold: 0.0647 },
+                { variety: 'rb', period: 'H2', cv: 0.47, skew: 1.26, tier: 'P75', threshold: 0.0385 },
+                { variety: 'rb', period: 'H4', cv: 0.35, skew: 0.45, tier: 'P75', threshold: 0.0332 },
+                { variety: 'rb', period: 'D1', cv: 0.21, skew: 0.05, tier: 'P75', threshold: 0.0422 },
+                { variety: 'ru', period: 'H4', cv: 0.32, skew: 0.31, tier: 'P75', threshold: 0.0588 },
+                { variety: 'ru', period: 'D1', cv: 0.28, skew: -0.31, tier: 'P75', threshold: 0.0806 },
+                { variety: 'y', period: 'H4', cv: 0.43, skew: 0.79, tier: 'P75', threshold: 0.0448 },
+                { variety: 'y', period: 'D1', cv: 0.42, skew: 0.93, tier: 'P75', threshold: 0.0596 },
+                { variety: 'zn', period: 'H2', cv: 0.50, skew: 1.35, tier: 'P75', threshold: 0.0447 },
+                { variety: 'zn', period: 'D1', cv: 0.53, skew: 0.59, tier: 'P75', threshold: 0.0716 },
+                // P80 组 (14条)
+                { variety: 'CF', period: 'H2', cv: 0.66, skew: 2.09, tier: 'P80', threshold: 0.0419 },
+                { variety: 'FG', period: 'H2', cv: 0.51, skew: 1.59, tier: 'P80', threshold: 0.0978 },
+                { variety: 'MA', period: 'H2', cv: 0.51, skew: 1.65, tier: 'P80', threshold: 0.0475 },
+                { variety: 'al', period: 'H2', cv: 0.55, skew: 2.00, tier: 'P80', threshold: 0.0328 },
+                { variety: 'al', period: 'D1', cv: 0.67, skew: 0.88, tier: 'P80', threshold: 0.0978 },
+                { variety: 'au', period: 'D1', cv: 0.58, skew: 0.66, tier: 'P80', threshold: 0.1908 },
+                { variety: 'c', period: 'D1', cv: 0.52, skew: 1.56, tier: 'P80', threshold: 0.0369 },
+                { variety: 'cu', period: 'H4', cv: 0.58, skew: 0.90, tier: 'P80', threshold: 0.0789 },
+                { variety: 'cu', period: 'D1', cv: 0.55, skew: 0.39, tier: 'P80', threshold: 0.1144 },
+                { variety: 'i', period: 'H2', cv: 0.54, skew: 2.45, tier: 'P80', threshold: 0.0804 },
+                { variety: 'ni', period: 'H2', cv: 0.53, skew: 2.36, tier: 'P80', threshold: 0.0531 },
+                { variety: 'p', period: 'D1', cv: 0.42, skew: 1.52, tier: 'P80', threshold: 0.0953 },
+                { variety: 'y', period: 'H2', cv: 0.47, skew: 1.57, tier: 'P80', threshold: 0.0526 },
+                { variety: 'zn', period: 'H4', cv: 0.58, skew: 1.23, tier: 'P80', threshold: 0.0582 },
+                // P85 组 (13条)
+                { variety: 'MA', period: 'H4', cv: 0.77, skew: 1.32, tier: 'P85', threshold: 0.1402 },
+                { variety: 'MA', period: 'D1', cv: 0.78, skew: 1.57, tier: 'P85', threshold: 0.2172 },
+                { variety: 'TA', period: 'H4', cv: 0.75, skew: 1.73, tier: 'P85', threshold: 0.1287 },
+                { variety: 'TA', period: 'D1', cv: 0.76, skew: 1.65, tier: 'P85', threshold: 0.2116 },
+                { variety: 'al', period: 'H4', cv: 0.75, skew: 1.56, tier: 'P85', threshold: 0.0787 },
+                { variety: 'au', period: 'H4', cv: 0.79, skew: 1.85, tier: 'P85', threshold: 0.1086 },
+                { variety: 'bu', period: 'H2', cv: 0.67, skew: 2.98, tier: 'P85', threshold: 0.0559 },
+                { variety: 'bu', period: 'H4', cv: 0.74, skew: 2.19, tier: 'P85', threshold: 0.1085 },
+                { variety: 'hc', period: 'H2', cv: 0.65, skew: 2.52, tier: 'P85', threshold: 0.0688 },
+                { variety: 'ni', period: 'H4', cv: 0.80, skew: 1.68, tier: 'P85', threshold: 0.1169 },
+                { variety: 'ni', period: 'D1', cv: 0.86, skew: 1.91, tier: 'P85', threshold: 0.1377 },
+                { variety: 'ru', period: 'H2', cv: 0.66, skew: 2.53, tier: 'P85', threshold: 0.0901 },
+                { variety: 'SA', period: 'H2', cv: 0.60, skew: 2.37, tier: 'P85', threshold: 0.0932 },
+                // P90 组 (3条)
+                { variety: 'TA', period: 'H2', cv: 0.78, skew: 2.82, tier: 'P90', threshold: 0.0933 },
+                { variety: 'cu', period: 'H2', cv: 0.79, skew: 3.43, tier: 'P90', threshold: 0.0488 },
+                { variety: 'bu', period: 'D1', cv: 0.79, skew: 2.85, tier: 'P90', threshold: 0.1424 },
+            ];
+
+            // 合并所有数据（ag + 正常组）
+            const allData = [...agData, ...normalData];
+
+            // 分位数统计
+            const tierCounts = { P75: 0, P80: 0, P85: 0, P90: 0 };
+            allData.forEach(d => tierCounts[d.tier]++);
+            // 注意 ag 特殊组中 D1 是 P75，H2/H4 是 P85，需准确统计
+            // 重新计算保证准确
+            const countMap = { P75: 0, P80: 0, P85: 0, P90: 0 };
+            allData.forEach(d => countMap[d.tier]++);
+
+            // ---------- 表格切换逻辑 ----------
+            const tierTables = {
+                p75: allData.filter(d => d.tier === 'P75'),
+                p80: allData.filter(d => d.tier === 'P80'),
+                p85: allData.filter(d => d.tier === 'P85'),
+                p90: allData.filter(d => d.tier === 'P90'),
+            };
+
+            function renderTable(tierKey) {
+                const data = tierTables[tierKey];
+                const container = document.getElementById('tier-table-container');
+                if (data.length === 0) {
+                    container.innerHTML = '<p style="color:var(--text-muted); padding:12px;">暂无数据</p>';
+                    return;
+                }
+                let html = '<table><thead><tr><th>品种</th><th>周期</th><th>CV</th><th>偏度</th><th>推荐分位</th><th>阈值</th></tr></thead><tbody>';
+                data.forEach(d => {
+                    const tierClass = d.tier.toLowerCase();
+                    html += `<tr>
+                        <td><strong>${d.variety}</strong></td>
+                        <td><span class="period-badge">${d.period}</span></td>
+                        <td>${d.cv.toFixed(2)}</td>
+                        <td>${d.skew.toFixed(2)}</td>
+                        <td><span class="tag tag-${tierClass}">${d.tier}</span></td>
+                        <td class="highlight-threshold">${d.threshold.toFixed(4)}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            }
+
+            // 默认显示 P75
+            renderTable('p75');
+
+            // 标签切换事件
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.tab-btn').forEach(b => {
+                        b.style.background = 'transparent';
+                        b.style.color = b.style.color.replace('6be07b', '#79b8ff').replace(
+                            '#f5a623', '#ff6b6b');
+                        b.style.borderColor = b.style.borderColor;
+                    });
+                    const tier = this.dataset.tier;
+                    this.style.background = tier === 'p75' ? 'rgba(63,185,80,0.2)' : tier ===
+                        'p80' ? 'rgba(88,166,255,0.2)' : tier === 'p85' ? 'rgba(240,136,62,0.2)' :
+                        'rgba(248,81,73,0.2)';
+                    this.style.color = tier === 'p75' ? '#6be07b' : tier === 'p80' ? '#79b8ff' :
+                        tier === 'p85' ? '#f5a623' : '#ff6b6b';
+                    renderTable(tier);
+                });
+            });
+
+            // ---------- 饼图：分位数使用占比 ----------
+            const pieChart = echarts.init(document.getElementById('chart-pie'));
+            pieChart.setOption({
+                tooltip: { trigger: 'item', formatter: '{b}: {c} 组 ({d}%)' },
+                legend: { bottom: 0, textStyle: { color: '#b0b8c4' } },
+                series: [{
+                    type: 'pie',
+                    radius: ['45%', '70%'],
+                    avoidLabelOverlap: false,
+                    itemStyle: { borderRadius: 6, borderColor: '#0c1117', borderWidth: 2 },
+                    label: { show: true, color: '#e6edf3', formatter: '{b}\n{d}%' },
+                    data: [
+                        { value: countMap.P75, name: 'P75', itemStyle: { color: '#3fb950' } },
+                        { value: countMap.P80, name: 'P80', itemStyle: { color: '#58a6ff' } },
+                        { value: countMap.P85, name: 'P85', itemStyle: { color: '#f0883e' } },
+                        { value: countMap.P90, name: 'P90', itemStyle: { color: '#f85149' } },
+                    ],
+                }],
+            });
+
+            // ---------- 散点图：CV vs 偏度 ----------
+            const scatterChart = echarts.init(document.getElementById('chart-scatter'));
+            const tierColors = { 'P75': '#3fb950', 'P80': '#58a6ff', 'P85': '#f0883e', 'P90': '#f85149' };
+            const seriesMap = {};
+            allData.forEach(d => {
+                if (!seriesMap[d.tier]) seriesMap[d.tier] = [];
+                seriesMap[d.tier].push([d.cv, d.skew, d.variety, d.period, d.threshold]);
+            });
+            const scatterSeries = Object.keys(seriesMap).map(tier => ({
+                name: tier,
+                type: 'scatter',
+                data: seriesMap[tier],
+                symbolSize: 10,
+                itemStyle: { color: tierColors[tier] },
+                emphasis: { scale: 1.5 },
+            }));
+            scatterChart.setOption({
+                tooltip: {
+                    trigger: 'item',
+                    formatter: function(p) {
+                        return `<strong>${p.data[2]} ${p.data[3]}</strong><br/>CV: ${p.data[0].toFixed(2)}<br/>偏度: ${p.data[1].toFixed(2)}<br/>阈值: ${p.data[4].toFixed(4)}`;
+                    }
+                },
+                legend: { bottom: 0, textStyle: { color: '#b0b8c4' } },
+                grid: { left: '8%', right: '5%', bottom: '12%', top: '8%' },
+                xAxis: { name: 'CV (变异系数)', nameTextStyle: { color: '#7d8590' }, axisLabel: { color: '#7d8590' },
+                    splitLine: { lineStyle: { color: '#21262d' } } },
+                yAxis: { name: '偏度', nameTextStyle: { color: '#7d8590' }, axisLabel: { color: '#7d8590' },
+                    splitLine: { lineStyle: { color: '#21262d' } } },
+                series: scatterSeries,
+            });
+
+            // ---------- 热力图：品种 × 周期 阈值 ----------
+            const heatmapChart = echarts.init(document.getElementById('chart-heatmap'));
+            const varieties = [...new Set(allData.map(d => d.variety))].sort();
+            const periods = ['H2', 'H4', 'D1'];
+            const heatData = [];
+            const maxThreshold = Math.max(...allData.map(d => d.threshold));
+            allData.forEach(d => {
+                heatData.push([periods.indexOf(d.period), varieties.indexOf(d.variety), d.threshold.toFixed(
+                    4), d.tier]);
+            });
+            heatmapChart.setOption({
+                tooltip: {
+                    formatter: function(p) {
+                        const val = p.data[2];
+                        const tier = p.data[3];
+                        return `<strong>${varieties[p.data[1]]} ${periods[p.data[0]]}</strong><br/>阈值: ${val}<br/>分位: ${tier}`;
+                    }
+                },
+                grid: { left: '8%', right: '8%', bottom: '5%', top: '3%' },
+                xAxis: { type: 'category', data: periods, axisLabel: { color: '#b0b8c4' }, splitArea: { show: true,
+                        areaStyle: { color: ['rgba(255,255,255,0.02)'] } } },
+                yAxis: { type: 'category', data: varieties, axisLabel: { color: '#b0b8c4', fontWeight: 600 },
+                    inverse: true },
+                visualMap: {
+                    min: 0.02,
+                    max: maxThreshold,
+                    calculable: true,
+                    orient: 'horizontal',
+                    left: 'center',
+                    bottom: 0,
+                    inRange: { color: ['#1a3a5c', '#2c5f8a', '#4d8fc7', '#e89b4f', '#d94e3c'] },
+                    textStyle: { color: '#b0b8c4' },
+                },
+                series: [{
+                    type: 'heatmap',
+                    data: heatData.map(d => [d[0], d[1], d[2]]),
+                    label: { show: true, fontSize: 9, color: '#e6edf3', formatter: p => p.data[2] },
+                    emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } },
+                }],
+            });
+
+            // ---------- 速查表文本生成 ----------
+            function generateCheatsheet() {
+                const lines = [];
+                lines.push('# 品种: 周期 → 分位数=阈值');
+                const byVariety = {};
+                allData.forEach(d => {
+                    if (!byVariety[d.variety]) byVariety[d.variety] = [];
+                    byVariety[d.variety].push(d);
+                });
+                Object.keys(byVariety).sort().forEach(v => {
+                    const periods = byVariety[v].sort((a, b) => a.period.localeCompare(b.period));
+                    const parts = periods.map(p => `${p.period}→${p.tier}=${p.threshold.toFixed(4)}`);
+                    lines.push(`${v}:  ${parts.join('  ')}`);
+                });
+                return lines.join('\n');
+            }
+            const cheatsheetText = generateCheatsheet();
+            document.getElementById('cheatsheet-text').textContent = cheatsheetText;
+
+            document.getElementById('copy-btn').addEventListener('click', () => {
+                navigator.clipboard.writeText(cheatsheetText).then(() => {
+                    alert('✅ 速查表已复制到剪贴板');
+                }).catch(() => {
+                    alert('❌ 复制失败，请手动选择文本复制');
+                });
+            });
+
+            // 窗口大小自适应
+            window.addEventListener('resize', () => {
+                pieChart.resize();
+                scatterChart.resize();
+                heatmapChart.resize();
+            });
+
+            console.log('✅ 带宽百分位推荐表仪表板已加载');
+            console.log(`   总计 ${allData.length} 组品种×周期，P75:${countMap.P75} P80:${countMap.P80} P85:${countMap.P85} P90:${countMap.P90}`);
+        })();
+    </script>
+</body>
+</html>
