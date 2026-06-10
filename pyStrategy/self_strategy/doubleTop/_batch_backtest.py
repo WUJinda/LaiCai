@@ -63,21 +63,81 @@ def get_margin_rate(instrument_id: str) -> float:
 
 # ============================================================
 # 查表法带宽阈值（各品种各周期，来自 bandwidth_stats.json）
-# ag（白银）使用 P90，其余品种全部使用 P75
+# 按品种×周期分别选百分位（P75/P80/P85/P90）
+# 规则：CV<0.55且偏度<1.5→P75，CV≥0.55或偏度≥1.5→P80，
+#        CV≥0.70或偏度≥2.5→P85，CV≥0.75且偏度≥2.0→P90
+# 排除：IC/IM/IF/IH（H4=D1数据重复）、T/TF/TS（国债带宽过小）
+# P80/P85 由 P75↔P90 线性插值
 # ============================================================
-_P90_INSTRUMENTS = {"AG"}  # 使用 P90 的品种列表
+
+# 每品种每周期 → 使用的百分位（全大写）
+_INSTRUMENT_PERCENTILE = {
+    # --- ag 异形波动组 ---
+    "AG_H2": "P85", "AG_H4": "P85", "AG_D1": "P75",
+    # --- 正常组 ---
+    "CF_H2": "P80", "CF_H4": "P75", "CF_D1": "P75",
+    "FG_H2": "P80", "FG_H4": "P75", "FG_D1": "P75",
+    "MA_H2": "P80", "MA_H4": "P85", "MA_D1": "P85",
+    "RM_H2": "P75", "RM_H4": "P75", "RM_D1": "P75",
+    "SA_H2": "P85", "SA_H4": "P75", "SA_D1": "P75",
+    "SR_H2": "P75", "SR_H4": "P75", "SR_D1": "P75",
+    "TA_H2": "P90", "TA_H4": "P85", "TA_D1": "P85",
+    "A_H2":  "P75", "A_H4":  "P75", "A_D1":  "P75",
+    "AL_H2": "P80", "AL_H4": "P85", "AL_D1": "P80",
+    "AU_H2": "P75", "AU_H4": "P85", "AU_D1": "P80",
+    "BU_H2": "P85", "BU_H4": "P85", "BU_D1": "P90",
+    "C_H2":  "P75", "C_H4":  "P75", "C_D1":  "P80",
+    "CS_H2": "P75", "CS_H4": "P75", "CS_D1": "P75",
+    "CU_H2": "P90", "CU_H4": "P80", "CU_D1": "P80",
+    "HC_H2": "P85", "HC_H4": "P75", "HC_D1": "P75",
+    "I_H2":  "P80", "I_H4":  "P75", "I_D1":  "P75",
+    "M_H2":  "P75", "M_H4":  "P75", "M_D1":  "P75",
+    "NI_H2": "P80", "NI_H4": "P85", "NI_D1": "P85",
+    "P_H2":  "P75", "P_H4":  "P75", "P_D1":  "P80",
+    "RB_H2": "P75", "RB_H4": "P75", "RB_D1": "P75",
+    "RU_H2": "P85", "RU_H4": "P75", "RU_D1": "P75",
+    "Y_H2":  "P80", "Y_H4":  "P75", "Y_D1":  "P75",
+    "ZN_H2": "P75", "ZN_H4": "P80", "ZN_D1": "P75",
+}
+
+# 向后兼容：旧代码引用 _P90_INSTRUMENTS 的地方
+_P90_INSTRUMENTS = {"AG"}  # deprecated，不再用于阈值选择逻辑
+
 _BANDWIDTH_STATS_PATH = os.path.join(os.path.dirname(__file__), "bandwidth_stats.json")
 
 
+def _interp_p80(p75, p90):
+    """P75→P90 线性插值 P80"""
+    return p75 + (p90 - p75) / 3.0
+
+
+def _interp_p85(p75, p90):
+    """P75→P90 线性插值 P85"""
+    return p75 + (p90 - p75) * 2.0 / 3.0
+
+
+def _get_threshold_for_pctile(val, pctile):
+    """根据百分位选择阈值：P75/P80/P85/P90"""
+    p75 = val.get("P75_Q3", 0)
+    p90 = val.get("P90", 0)
+    if pctile == "P90":
+        return p90
+    elif pctile == "P85":
+        return _interp_p85(p75, p90)
+    elif pctile == "P80":
+        return _interp_p80(p75, p90)
+    else:  # P75 (default)
+        return p75
+
+
 def _load_bandwidth_data():
-    """从 bandwidth_stats.json 加载各品种各周期的 P75/P90，ag 用 P90，其余用 P75"""
+    """从 bandwidth_stats.json 加载各品种各周期阈值，按 _INSTRUMENT_PERCENTILE 选分位"""
     try:
         with open(_BANDWIDTH_STATS_PATH, "r", encoding="utf-8") as f:
             stats = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
-    # 构建完整阈值表
     data = {}
     for key, val in stats.items():
         if key.startswith("_") or "_" not in key:
@@ -86,12 +146,15 @@ def _load_bandwidth_data():
         if len(parts) == 2:
             sym, period = parts
             lookup_key = f"{sym}_{period}".upper()
-            use_p90 = sym.upper() in _P90_INSTRUMENTS
-            pct_key = "P90" if use_p90 else "P75_Q3"
+            # 查找该品种周期应使用的百分位
+            pctile = _INSTRUMENT_PERCENTILE.get(lookup_key, "P75")
+            threshold = _get_threshold_for_pctile(val, pctile)
             data[lookup_key] = {
-                "threshold": val.get(pct_key, val.get("P75_Q3", 0.04)),
-                "percentile": "P90" if use_p90 else "P75",
+                "threshold": threshold,
+                "percentile": pctile,
                 "P75": val.get("P75_Q3", 0),
+                "P80": _interp_p80(val.get("P75_Q3", 0), val.get("P90", 0)),
+                "P85": _interp_p85(val.get("P75_Q3", 0), val.get("P90", 0)),
                 "P90": val.get("P90", 0),
             }
     return data
