@@ -200,11 +200,21 @@ def calc_bbands(close_array, period=20, std_dev=2.0):
 
 
 class Trade:
-    def __init__(self, open_idx, open_date, open_price, volume):
+    def __init__(self, open_idx, open_date, open_price, volume,
+                 h_left=None, h_left_idx=-1, scan_start_idx=-1,
+                 scan_end_idx=-1, zone_upper=None, bb_middle_at_entry=None):
         self.open_idx = open_idx
         self.open_date = open_date
         self.open_price = open_price
         self.volume = volume
+        # 双顶字段（可选，供 run_band_lookup 使用）
+        self.h_left = h_left
+        self.h_left_idx = h_left_idx
+        self.scan_start_idx = scan_start_idx
+        self.scan_end_idx = scan_end_idx
+        self.zone_upper = zone_upper
+        self.bb_middle_at_entry = bb_middle_at_entry
+        # 平仓字段
         self.close_idx = None
         self.close_date = None
         self.close_price = None
